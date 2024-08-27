@@ -2,20 +2,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import numpy as np
-from datetime import datetime
-import re
-from timeit import default_timer as timer
-from matplotlib.collections import LineCollection
 from scipy.stats import gaussian_kde
-import networkx as nx
-import community as community_louvain
 from scipy.stats import ttest_ind
 from scipy.stats import mannwhitneyu
 
-import matplotlib as mpl
-
-
 class plotting_object():
+    '''
+    Class to save data and arguments between functions
+    '''
     def __init__(self, sample, run):
         
         self.sample = sample
@@ -27,7 +21,6 @@ class plotting_object():
         self.bead_density_gaussian = None
         self.umi_density_gaussian = None
 
-        self.unipartite_edges = None
         self.edges_df = None
         self.positions_df = None
 
@@ -35,7 +28,9 @@ class plotting_object():
         self.subgraph_files = None
 
 def plotCellDensity(summary_object):
-
+    '''
+    This function estimates and saves the cell density as a gaussian probability for each cell, as well as generates a figure for plotting
+    '''
     coordinates_df = summary_object.positions_df
     fig_density, (ax_density, ax_violin) = plt.subplots(1, 2, figsize=(12, 6))  # Create a figure with two subplots
     print()
@@ -71,15 +66,20 @@ def plotCellDensity(summary_object):
     summary_object.cell_density = df
     return summary_object
 
-def plotBeadDensity(summary_object): # unused but would check the degree of each cell
+def plotBeadDensity(summary_object):
+    '''
+    Since the method of finding subgraphs is highly related to cell degree, this remains unused due
+    to correlation being highly likely irregardless of true relationship
+    '''
     fig_density, ax_density = plt.subplots(1,1, label = "Bead density highlight")
     edges_df = summary_object.edges_df
     count_matrix = edges_df["cell_bc_10x"].value_counts()
     print(len(count_matrix))
+    coordinates_df = summary_object.positions_df
 
     all_points = []
     cells_not_found = 0
-    for cell, values in nucleus_coordinates_df[1:].iterrows():
+    for cell, values in coordinates_df[1:].iterrows():
         cell = cell[:-2]
         try:        
             # print(count_matrix[cell])
@@ -121,22 +121,23 @@ def plotBeadDensity(summary_object): # unused but would check the degree of each
     cbar = plt.colorbar(scatter)
     cbar.set_label('Degree density')
     summary_object.bead_density_gaussian = weighted_kde
-    fig_density.savefig("Mouse_Embryo/20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256/Bead_densities.pdf", format ="PDF")
-    print(summary_object.cell_density)
-    print(df)
     summary_object.bead_density = df
     return summary_object
     pass
 
 def plotUMIDensity(summary_object):
+    '''
+    This function calculates and models the number of UMI's per cell.Note this is not normalized for cell density
+    '''
     fig_density, ax_density = plt.subplots(1,1, label = "UMI density highlight")
     edges_df = summary_object.edges_df
-    filtering_df =edges_df.groupby("cell_bc_10x").sum()
+    filtering_df =edges_df.groupby("cell_bc_10x").sum() # Sums the number of UMIs for each unique cell barcode
     print(filtering_df)
+    coordinates_df = summary_object.positions_df
 
     all_points = []
     cells_not_found = 0
-    for cell, values in nucleus_coordinates_df[1:].iterrows():
+    for cell, values in coordinates_df[1:].iterrows(): # The slide-tags downloaded cell positions have a "-1" added on the end, this accounts for that as well as cells without known position
         cell = cell[:-2]
 
         try:    
@@ -159,19 +160,14 @@ def plotUMIDensity(summary_object):
     # ax_density.scatter(x, y, c = weights)
     xy = np.vstack([x, y])
 
-    # Step 3: Evaluate the KDE at each point
-    density_kde = gaussian_kde(xy)
-
     # KDE for weighted density
-    weighted_kde = gaussian_kde(xy, weights=weights)
+    weighted_kde = gaussian_kde(xy, weights=weights) # gneerate guassian weighted by number of UMIs
 
-    # Step 3: Evaluate both KDEs at each point
-    density = density_kde(xy)
+    # Evaluate both KDEs at each point
     weighted_density = weighted_kde(xy)
-
     df['weighted_density'] = weighted_density
 
-    # Sort by normalized_density to ensure points with highest density are plotted last
+    # Sort by UMI weighted to ensure points with highest density are plotted last
     df = df.sort_values(by='weighted_density')
 
     # Plot the data, ensuring points with higher density are on top
@@ -181,10 +177,12 @@ def plotUMIDensity(summary_object):
     cbar.set_label('UMI density')
     summary_object.umi_density_gaussian = weighted_kde
     summary_object.umi_density = df
-    fig_density.savefig("Mouse_Embryo/20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256/UMI_densities.pdf", format ="PDF")
     return summary_object
 
 def normalizedDensities(summary_object): 
+    '''
+    This functions simply adds a df with all densities to the summary class objects for use in later functions
+    '''
     coordinates_df = summary_object.positions_df
 
     x = coordinates_df["X"][1:].astype("float")
@@ -203,45 +201,15 @@ def normalizedDensities(summary_object):
     })
     summary_object.all_densities = df
     return summary_object
-    # Calculate density ratios
-    df['bead_over_cell_density'] = df['bead_density'] / df['cell_density']
-    df['umi_over_cell_density'] = df['umi_density'] / df['cell_density']
-    df['umi_over_bead_density'] = df['umi_density'] / df['bead_density']
-
-    # Sort DataFrame by density ratios to ensure highest density points are plotted last
-    df_sorted_boc = df.sort_values(by='bead_over_cell_density')
-    df_sorted_uoc = df.sort_values(by='umi_over_cell_density')
-    df_sorted_uob = df.sort_values(by='umi_over_bead_density')
-
-    fig, (ax_b, ax_u, ax_bu) = plt.subplots(1, 3, figsize = (18,5))
-    # Step 4: Normalize the weighted KDE by the point density KDE
-    scatter_b = ax_b.scatter(df_sorted_boc['x'], df_sorted_boc['y'], c=df_sorted_boc['bead_over_cell_density'], cmap='viridis')
-    ax_b.set_aspect('equal')
-    ax_b.set_title("Degree density over cell density")
-    cbar_b = plt.colorbar(scatter_b, ax=ax_b)
-    cbar_b.set_label('Degree over Cell density')
-
-    # Plot UMI density over cell density
-    scatter_u = ax_u.scatter(df_sorted_uoc['x'], df_sorted_uoc['y'], c=df_sorted_uoc['umi_over_cell_density'], cmap='viridis')
-    ax_u.set_aspect('equal')
-    ax_u.set_title("UMI density over cell density")
-    cbar_u = plt.colorbar(scatter_u, ax=ax_u)
-    cbar_u.set_label('UMIs over Cell density')
-
-    # Plot UMI density over Degree density
-    scatter_bu = ax_bu.scatter(df_sorted_uob['x'], df_sorted_uob['y'], c=df_sorted_uob['umi_over_bead_density'], cmap='viridis')
-    ax_bu.set_aspect('equal')
-    ax_bu.set_title("UMI density over Degree density")
-    cbar_bu = plt.colorbar(scatter_bu, ax=ax_bu)
-    cbar_bu.set_label('UMI over Degree density')
-
-    summary_object.fig = fig
-    return summary_object
 
 def readSubgraphs(summary):
+    '''
+    This functions reads edgelists in number form and converts them to barcodes,
+    it then outputs all the barcodes that contain one of the subgraphs inputted 
+    '''
     all_subgraphs = os.listdir(f"{summary.sample}/{summary.run}/analysis_edges")
     print(all_subgraphs)
-    seq_to_node = summary.seq_to_node.to_dict()["cell"]
+    seq_to_node = summary.seq_to_node.to_dict()["cell"] # required for converting number to barcodes, should be generated beforehand
     all_subgraph_barcodes = []
 
     for subgraph in all_subgraphs:
@@ -257,10 +225,9 @@ def readSubgraphs(summary):
     return all_subgraph_barcodes
 
 def AnalyseSubplotsDensity(summary_object):
-    
-    coordinates_df = summary_object.positions_df
-    print()
-    print()
+    '''
+    This functions not only generates the normalized densitites but also does the statistical tests
+    '''
 
     fig_density, ((ax_density, ax_violin),(ax_density_bead, ax_violin_bead),(ax_density_umi, ax_violin_umi)) = plt.subplots(3, 2, figsize=(12, 10))  # Create a figure with two subplots
     density_df = summary_object.all_densities
@@ -283,12 +250,12 @@ def AnalyseSubplotsDensity(summary_object):
     scatter = ax_density_bead.scatter(df_sorted_boc["x"], df_sorted_boc["y"], c=df_sorted_boc["bead_over_cell"].values)
     ax_density_bead.set_aspect('equal')
     cbar = plt.colorbar(scatter, ax=ax_density_bead)
-    cbar.set_label('Degree density')
+    cbar.set_label('Cell normalized degree density')
 
     scatter = ax_density_umi.scatter(df_sorted_uoc["x"], df_sorted_uoc["y"], c=df_sorted_uoc["umi_over_cell"].values)
     ax_density_umi.set_aspect('equal')
     cbar = plt.colorbar(scatter, ax=ax_density_umi)
-    cbar.set_label('UMI density')
+    cbar.set_label('Cell normalized UMI density')
 
     # Violin plot for cell densities
     # ax_violin.violinplot(density_df["cell_density"].values, vert=False)
@@ -306,13 +273,11 @@ def AnalyseSubplotsDensity(summary_object):
     ax_violin_umi.set_title('UMI Density Distribution')
 
     combined_cell_z = []
-    combined_bead_z = []
     combined_umi_z = []
 
     plt.tight_layout()
-    combined_cell_z = density_df.loc[summary_object.subgraph_barcodes]["cell_density"].values
-    combined_bead_z = density_df.loc[summary_object.subgraph_barcodes]["bead_over_cell"].values
-    combined_umi_z = density_df.loc[summary_object.subgraph_barcodes]["umi_over_cell"].values
+    combined_cell_z = density_df.loc[summary_object.subgraph_barcodes]["cell_density"].values # cell densities
+    combined_umi_z = density_df.loc[summary_object.subgraph_barcodes]["umi_over_cell"].values # normalized UMI densities
     
     def rank_biserial_correlation(U, n1, n2):
         return 1 - (2 * U) / (n1 * n2)
@@ -333,7 +298,7 @@ def AnalyseSubplotsDensity(summary_object):
     n1, n2 = len(combined_umi_z), len(non_sub_umi_z)
 
     u_stat, p_value = mannwhitneyu(combined_cell_z, non_sub_cell_z, alternative='greater')
-    print(f"\n\np-value for combined_cell_z vs. non_sub_cell_z: {p_value}")
+    print(f"\n\np-value for subgraph cells vs non-subgraphs cells based on cell density: {p_value}")
     print(f"U statistic: {u_stat}")
     print(f"Sample sizes: {len(combined_cell_z)}, {len(non_sub_cell_z)}")
     rank_biserial_corr = rank_biserial_correlation(u_stat, n1, n2)
@@ -341,7 +306,7 @@ def AnalyseSubplotsDensity(summary_object):
 
     # Perform Mann-Whitney U test for combined_umi_z and non_sub_umi_z
     u_stat, p_value = mannwhitneyu(combined_umi_z, non_sub_umi_z, alternative='greater')
-    print(f"p-value for combined_umi_z vs. non_sub_umi_z: {p_value}")
+    print(f"p-value for subgraph cells vs non-subgraphs cells based on normalized UMI density: {p_value}")
     print(f"U statistic: {u_stat}")
     print(f"Sample sizes: {len(combined_umi_z)}, {len(non_sub_umi_z)}")
     rank_biserial_corr = rank_biserial_correlation(u_stat, n1, n2)
@@ -350,22 +315,21 @@ def AnalyseSubplotsDensity(summary_object):
     from scipy.stats import ks_2samp, levene, brunnermunzel
     
     bm_stat, bm_p_value = brunnermunzel(combined_umi_z, non_sub_umi_z)
-    print(f'Brunner-Munzel test statistic: {bm_stat}, p-value: {bm_p_value}')
+    print(f'Brunner-Munzel test statistic normalized UMI density: {bm_stat}, p-value: {bm_p_value}')
 
     # Kolmogorov-Smirnov Test
     ks_stat, ks_p_value = ks_2samp(combined_umi_z, non_sub_umi_z)
-    print(f'Kolmogorov-Smirnov test statistic: {ks_stat}, p-value: {ks_p_value}')
+    print(f'Kolmogorov-Smirnov test statistic normalized UMI density: {ks_stat}, p-value: {ks_p_value}')
 
     # Levene's Test for Equality of Variances
     levene_stat, levene_p_value = levene(combined_umi_z, non_sub_umi_z)
-    print(f'Levene test statistic: {levene_stat}, p-value: {levene_p_value}')
+    print(f'Levene test statistic normalized UMI density: {levene_stat}, p-value: {levene_p_value}')
 
     num_points_first = len(density_df["cell_density"])
     
     num_points_second = len(summary_object.subgraph_barcodes)
     print(num_points_first, num_points_second)
 
-    # scale_factor = 1
     # Plot the second violin plot with adjusted scale
     fig, axs = plt.subplots(2, 1, figsize=(12, 16))
 
@@ -389,8 +353,8 @@ def AnalyseSubplotsDensity(summary_object):
 
     # Customize the x-axis for cell_z subplot
     axs[0].set_xticks(positions_cell)
-    axs[0].set_xticklabels(['Combined Cell Z', 'Non-sub Cell Z'])
-    axs[0].set_title('Cell Z Variables')
+    axs[0].set_xticklabels(['Subgraph cell density', 'Non-subgraph Cell density'])
+    axs[0].set_title('Cell density Variables')
 
     # Plot for umi_z variables
     positions_umi = [1, 2]
@@ -407,52 +371,48 @@ def AnalyseSubplotsDensity(summary_object):
 
     # Customize the x-axis for umi_z subplot
     axs[1].set_xticks(positions_umi)
-    axs[1].set_xticklabels(['Combined UMI Z', 'Non-sub UMI Z'])
-    axs[1].set_title('UMI Z Variables')
+    axs[1].set_xticklabels(['Subgraph normalized UMI density', 'Non-subgraph normalized UMI density'])
+    axs[1].set_title('Normalized UMI density Variables')
     axs[1].set_box_aspect(1)
     axs[0].set_box_aspect(1)
     # Adjust layout for better visualization
-
-    plt.savefig(f"Mouse_Embryo/20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256/violins_and_heatmaps.pdf", format="pdf")
+    plt.show()
+    plt.savefig(f"{summary_object.sample}/{summary_object.run}/violins_and_heatmaps.pdf", format="pdf")
     # plt.show()
-Sample = "Mouse_Embryo"
-Sample_run = "20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256"
 
-entries = os.listdir(Sample+"/") 
-str_id = "spatial"
-spatial_file = [entries for entries in entries if str_id in entries][-1]
-nucleus_coordinates_df = pd.read_csv(Sample+"/"+spatial_file).set_index("NAME")
+def main(args):
+    # edge_file = "SRR11_edge_list_sequences_only_spatial.csv" #  SRR11_edge_list_sequences_only_spatial.csv , SRR11_edge_list_sequences_all_CR_barcodes.csv
+    edges_df = pd.read_csv(f'Mouse_Embryo/20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256/{args["edgelist_filename"]}')
+    Sample = args["Sample"]
+    Sample_run = args["Run"]
+    print(Sample)
+    nucleus_coordinates_df = pd.read_csv(Sample+"/"+f'{args["barcodes_coordinates_file"]}').set_index("NAME")
 
-filename = "edge_list_filtered_by_per_edge_weight_1.csv"
-# filename = "edge_list_nbead_1_f   iltering.csv"
-edge_file = f'Mouse_Embryo/20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256/{filename}'  # Ensure this path points to your CSV file
+    summary_object = plotting_object(Sample, Sample_run)
+    summary_object.seq_to_node = pd.read_csv(f"{Sample}/{Sample}_cell_and_bead-idx_mapping.csv", names=["cell", "node_ID"]).set_index("node_ID")
+    summary_object.edges_df = edges_df
+    summary_object.positions_df = nucleus_coordinates_df
 
+    entries = os.listdir(f"{Sample}/{Sample_run}/") 
+    str_id = "final_reconstruction_file.csv"
+    subgraph_files = [f"{Sample}/{Sample_run}/"+entries for entries in entries if str_id in entries]
+    summary_object.subgraph_files = subgraph_files
 
-# edge_file = "SRR11_edge_list_sequences_only_spatial.csv" #  SRR11_edge_list_sequences_only_spatial.csv , SRR11_edge_list_sequences_all_CR_barcodes.csv
-edges_df = pd.read_csv(edge_file)
-unipartite_edges = pd.read_csv(f'Mouse_Embryo/20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256/all_edges_with_weights_and_distances_with_check.csv').drop(["one_is_one"], axis = 1)
+    summary_object = plotCellDensity(summary_object)
+    summary_object = plotBeadDensity(summary_object)
+    summary_object = plotUMIDensity(summary_object)
 
-summary_object = plotting_object(Sample, Sample_run)
-summary_object.seq_to_node = pd.read_csv(f"{Sample}/{Sample}_cell_and_bead-idx_mapping.csv", names=["cell", "node_ID"]).set_index("node_ID")
-summary_object.edges_df = edges_df
-summary_object.unipartite_edges = unipartite_edges
-summary_object.positions_df = nucleus_coordinates_df
+    summary_object = normalizedDensities(summary_object)
+    plt.close("all")
+    subgraph_barcodes = readSubgraphs(summary_object)
 
-entries = os.listdir(f"{Sample}/{Sample_run}/") 
-str_id = "final_reconstruction_file.csv"
-subgraph_files = [f"{Sample}/{Sample_run}/"+entries for entries in entries if str_id in entries]
-summary_object.subgraph_files = subgraph_files
+    summary_object.subgraph_barcodes = subgraph_barcodes
+    AnalyseSubplotsDensity(summary_object)
+args = {
+    "Sample"                    : "Mouse_Embryo", 
+    "Run"                       : "20240516_spatial_bead_sum1-256_edge_1_n_connections_1-256",
+    "barcodes_coordinates_file" : "mouseembryo_spatial.csv",
+    "edgelist_filename"         : "edge_list_filtered_by_per_edge_weight_1.csv",
+    }
 
-summary_object = plotCellDensity(summary_object)
-summary_object = plotBeadDensity(summary_object)
-summary_object = plotUMIDensity(summary_object)
-
-summary_object = normalizedDensities(summary_object)
-plt.close("all")
-subgraph_barcodes = readSubgraphs(summary_object)
-
-summary_object.subgraph_barcodes = subgraph_barcodes
-AnalyseSubplotsDensity(summary_object)
-
-# networkCommunityDetectionBMM(summary_object)
-# plt.show()
+main(args)
