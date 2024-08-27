@@ -2,3 +2,15 @@
 
 Python code for processing and visualizing Slide-tags data as presented in the paper "Hidden network preserved in Slide-tags data allows reference-free spatial reconstruction" 
 https://www.biorxiv.org/content/10.1101/2024.06.16.598614v1.
+
+barcode_processing.py is used to convert the raw output file of the relevant part of Russel et al.'s pipeline to the format for comparing with ground truth positions
+
+Filtering_and_edge_plotting.py is used to filter the resulting edge list and do a simple plotting of the known cell positions as well as overlapping the unipartite network edges
+
+density_calculations.py is used to calculate the etsimated cell and normalized UMI densitites as well as performing relevant statistical tests on those densities
+
+The pair of main.py and functions.py is used to analyse the reconstructed subgraphs, as well as generate refiltered edgelists from the raw, highly filtered edgelists
+
+Quality_metrics.py contains a class with functions for assessing reconstruction qualities and is used in functions.py and stems from earlier STRND reconstruction work avaialbel through the link below as well.
+
+Subgraphs are generated from the Reconstruction pipelines with analyzes any input network to separate subgraphs as a part of its initial steps available, for details please the github for [Spatial coherence](https://github.com/DavidFernandezBonet/Network_Spatial_Coherence?tab=readme-ov-file). For additional details regarding [spatial coherence](https://www.biorxiv.org/content/10.1101/2024.05.12.593725v1.abstract) and [STRND reconstruction](https://pubs.rsc.org/en/content/articlehtml/2023/nr/d2nr05435c), please refer to the respective papers.
