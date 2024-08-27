@@ -15,7 +15,7 @@ Quality_metrics.py contains a class with functions for assessing reconstruction 
 
 Subgraphs are generated from the Reconstruction pipelines with analyzes any input network to separate subgraphs as a part of its initial steps available, for details please the github for [Spatial coherence](https://github.com/DavidFernandezBonet/Network_Spatial_Coherence?tab=readme-ov-file). For additional details regarding [spatial coherence](https://www.biorxiv.org/content/10.1101/2024.05.12.593725v1.abstract) and [STRND reconstruction](https://pubs.rsc.org/en/content/articlehtml/2023/nr/d2nr05435c), please refer to the respective papers.
 
-This page and containing code will come to be updated for clarity and usability, especisally the main.py and function.py pair
+This page and containing code will come to be updated for clarity and usability, especially the main.py and function.py pair.
 
 The folder structure should be prepared like this:
 ```
