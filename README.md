@@ -8,9 +8,16 @@ All config fiels are loaded with default settings that correspond to analyzing t
 While most of the code operates on relatively standard python packages (numpy, pandas, matplotlib etc.) packages related to the STRND reconstruction (available here https://github.com/DavidFernandezBonet/Network_Spatial_Coherence) and the reconstructions "morphing" (available here: https://github.com/DavidFernandezBonet/alphamorph) has to be installed. 
 To run the STRND package 3.11 or 3.12 is recommended, python 3.11 was used for this manuscript.
 
-After creating the environment of choice, the packages are then installed with:
+The .yml file can be used to create the required environment using Conda
+
+```bash 
+conda env create -f environment.yml
+```
+
+Alternatively, the packages required will also be installed as a part of these three packages: 
+
 ```bash
 pip install network_spatial_coherence
 pip install alphamorph
+pip install notebook
 ```
-If running the code using the provided jupyter notebooks, it has to also be installed as a normal python package using pip or conda depending on preference.
