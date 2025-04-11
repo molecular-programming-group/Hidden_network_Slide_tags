@@ -21,3 +21,4 @@ pip install network_spatial_coherence
 pip install alphamorph
 pip install notebook
 ```
+__More updates coming within shortly, including input files, bugfixing, figure generation, ease of use, and annotation__
