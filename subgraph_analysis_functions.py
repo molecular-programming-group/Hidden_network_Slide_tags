@@ -826,7 +826,7 @@ class subgraphToAnalyse():
         elif clr_scheme =="image":
             print(x_values)
             from PIL import Image
-            image = Image.open("Images/DNA_black_and_white.png").convert("L")
+            image = Image.open("Input_files/DNA_black_and_white.png").convert("L")
             image_array = np.array(image)
             self.binary_image = image_array < 128  # black if pixel value < 128
             height, width = self.binary_image.shape
@@ -1755,8 +1755,24 @@ def analyze_subgraph_enrichment(config):
     
     return subgraph
     
+def initalize_files(config):
+    from Utils import Pointcloud
+    nUMI_thresholds = config.base_network_args.run_parameters.nUMI_sum_per_bead_thresholds
+    n_connections_thresholds = config.base_network_args.run_parameters.n_connected_cells_thresholds
+    per_edge_weight_threshold = config.base_network_args.run_parameters.per_edge_nUMI_thresholds
+    
+    config.files_location = f"Intermediary_files/{config.sample_name}/run={config.base_network_args.unfiltered_edge_file[:-4]}_filters=numi{nUMI_thresholds[0]}-{nUMI_thresholds[1]}_nconn{n_connections_thresholds[0]}-{n_connections_thresholds[1]}_w{per_edge_weight_threshold}"
+   
+    config.ground_truth_df = pd.read_csv(f"Input_files/{config.base_network_args.ground_truth_file}")
+    config.gt_points = Pointcloud(config.ground_truth_df, input_type="GT")
+    config.idx_to_bc = pd.read_csv(f"Intermediary_files/{config.sample_name}/barcode_to_index_mapping_all.csv")
+    config.raw_edge_file = f"Intermediary_files/{config.sample_name}/{config.base_network_args.unfiltered_edge_file}"
+    config.raw_edges = pd.read_csv(config.raw_edge_file)
+    
+    return config
+
 def perform_analysis_actions(config):
-    from base_network_analysis_functions import initalize_files
+
     config = initalize_files(config)
     config = initialize_post_subgraph_analysis(config, initial=True)
     if config.filter_analysis_args.analyse_all_thresholds:
