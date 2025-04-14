@@ -7,7 +7,7 @@ there are several config files, corresponding to the main elements of the code;
 3. Analysis - This has several different modes of analysis, and involves going back and forth between functions to a certain degree and uses the config to find the right files
 All config files are loaded with default settings that correspond to analyzing the Human tonsil
 
-While most of the code operates on relatively standard python packages (numpy, pandas, matplotlib etc.) packages related to the STRND reconstruction (available[here](https://github.com/DavidFernandezBonet/Network_Spatial_Coherence)) and the reconstruction "morphing" (available [here](https://github.com/DavidFernandezBonet/alphamorph)) has to be installed. 
+While most of the code operates on relatively standard python packages (numpy, pandas, matplotlib etc.) packages related to the STRND reconstruction (available [HERE](https://github.com/DavidFernandezBonet/Network_Spatial_Coherence)) and the reconstruction "morphing" (available [HERE](https://github.com/DavidFernandezBonet/alphamorph)) has to be installed. 
 To run the STRND package 3.11 or 3.12 is recommended, python 3.11 was used for this manuscript.
 
 The .yml file can be used to create the required environment using Conda
