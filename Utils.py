@@ -294,7 +294,7 @@ plot_modification = False
 modification_type = "dbscan"  #gated, enriched, dbscan
 
 vizualisation_args = {
-    "how_many_reconstructions"  :1,                # number or "all" if there are multiple reconstructions, how many should be plotted
+    "how_many_reconstructions"  : 1,                # number or "all" if there are multiple reconstructions, how many should be plotted
     "reconstruction_type"       : "recon", #recon, distortion, morphed_recon, or morphed_distortion
     "color_scheme"              : "cell_type",       # cell_type, vertical, horizontal, radius, knn, distortion, image
     "colormap"                  : "magma_r",     #Any matplotlib colormap, recommend viridis or tab10
@@ -447,5 +447,4 @@ def runFullFilteringAndRawSubgraphPipeline(config):
     interpretConfigAndReconstruct(config)
 
 if __name__ =="__main__":
-    config = ConfigLoader('config_real.py')
-    runFullFilteringAndRawSubgraphPipeline(config)
+    create_structure()

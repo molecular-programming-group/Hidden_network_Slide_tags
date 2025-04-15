@@ -188,5 +188,5 @@ if __name__ =="__main__":
     from filtering_functions import perform_filtering
     from Utils import *
 
-    config = ConfigLoader('config_real.py')
+    config = ConfigLoader('config_standard_processes.py')
     perform_filtering(config)

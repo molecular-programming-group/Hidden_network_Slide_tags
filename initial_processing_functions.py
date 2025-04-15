@@ -83,7 +83,7 @@ if __name__=="__main__":
     from initial_processing_functions import perform_preprocessing
     from Utils import *
 
-    config = ConfigLoader('config_real.py')
+    config = ConfigLoader('config_standard_processes.py')
     #print(config.preprocessing_args.filepaths.slidetags_output)  # Output: df_whitelist_SRR11.txt
     #print(config.preprocessing_args.use_only_filtered)           # Output: True
 
