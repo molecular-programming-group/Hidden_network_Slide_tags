@@ -1794,5 +1794,5 @@ if __name__== "__main__":
     from Utils import ConfigLoader
 
     #config_subgraph_analysis_mouse_hippocampus, config_subgraph_analysis_mouse_embryo, config_subgraph_analysis_tonsil, config_analysis
-    config = ConfigLoader('config_subgraph_analysis_mouse_embryo_uni.py')
+    config = ConfigLoader('config_subgraph_analysis.py')
     perform_analysis_actions(config)

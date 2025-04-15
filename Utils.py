@@ -268,7 +268,7 @@ base_network_args = {
 
     }
 
-predicted_cell_types_file = "tonsil_recon_gated_new_cell_predictions_metadata.csv"
+predicted_cell_types_file = None
 
 filter_analysis_args = {
     "reconstruction_dimension"  : 2,
@@ -290,7 +290,7 @@ subgraph_to_analyse = {
     "include_ungated"           : True
     }
 
-plot_modification = True
+plot_modification = False
 modification_type = "dbscan"  #gated, enriched, dbscan
 
 vizualisation_args = {
