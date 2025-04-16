@@ -1,25 +1,25 @@
 "analyse" - options
 (* or ** indicates it needs one or two additional arguments)
 ---
-distance_variation_metrics  - A scatterplot of each edge's reconstructed distance mean against standard deviation   !!!
+distance_variation_metrics  - A scatterplot of each edge's reconstructed distance mean against standard deviation - add density colouring
 distance_distribution       - Histogram of the distribution of edge mean distances in the reconstruction
 distance_distribution_std   - Histogram of the distribution of edge distances standard deviation over multiple reconstructions  !!!
 distortion                  - Overlapped histograms of the distrotions distributions for all reconstructions
 knn                         - Scatterplot of the frequency of each KNN value for all reconstructions
 edge_distance               - Scatterplot of something?                                                 !!!
-knn_over_k                  - Showing KNN as it varies over differnt values of K                                !!!
+knn_over_k                  - Showing KNN as it varies over differnt values of K                               
 metric_correlation          - Scatterplot of mean distortions over mean KNN values for each cell individually   !!!
 metric_correlation_std      - Same except standard deviation instead of mean                                    !!!
-dbscan_calculation**        - Calculates the DBSCAN cluster of each cell-connected beads and modified the reconstruction summary to save how manu clusters each cell generates !!!
-dbscan_analysis             - Barplots showing the distribution of numbers of cluster as well as percentage of 1-cluster cells  !!!
+dbscan_calculation**        - Calculates the DBSCAN cluster of each cell-connected beads and modified the reconstruction summary to save how manu clusters each cell generates 
+dbscan_analysis             - Barplots showing the distribution of numbers of cluster as well as percentage of 1-cluster cells 
 normal_vs_morphed*          - Compares the distortion distributions between morphed and unmorphed coordinates       !!!
 cell_types                  - Violin plots of the KNN distributions separated by cell types
-cpd                         - Scatterplot of the reconstructed distances against the reference distances        !!!
-umi_vs_dist                 - Scatterplot of the reconstructed distance vs the number of UMIS associated to that edge !!!
-knn_over_density            - Scatterplot of the KNN value over cell density        !!!
-knn_over_umis               - scatterplot of the KNN value of the sum of UMIS for each cell !!!
+cpd                         - Scatterplot of the reconstructed distances against the reference distances - can be very memory intensive for large network, activate "subsampling" if that is the case
+umi_vs_dist                 - Scatterplot of the reconstructed distance vs the number of UMIS associated to that edge
+knn_over_density            - Scatterplot of the KNN value over cell density - add density colouring
+knn_over_umis               - scatterplot of the KNN value of the sum of UMIS for each cell - add density colouring
 per_cell_cpd                - per cell PCD - WIP
-metric_heatmaps             - Heatmpas of the reference positions coloured by density, UMI density, KNN, and degree !!!
+metric_heatmaps             - Heatmpas of the reference positions coloured by density, UMI density, KNN, and degree
 
 ---
 

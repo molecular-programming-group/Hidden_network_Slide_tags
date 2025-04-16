@@ -1767,7 +1767,10 @@ def initalize_files(config):
     config.gt_points = Pointcloud(config.ground_truth_df, input_type="GT")
     config.idx_to_bc = pd.read_csv(f"Intermediary_files/{config.sample_name}/barcode_to_index_mapping_all.csv")
     config.raw_edge_file = f"Intermediary_files/{config.sample_name}/{config.base_network_args.unfiltered_edge_file}"
-    config.raw_edges = pd.read_csv(config.raw_edge_file)
+    try:
+        config.raw_edges = pd.read_csv(config.raw_edge_file)
+    except:
+        config.raw_edge_file = f"Intermediary_files/{config.sample_name}/all_cells_synthetic.csv"
     
     return config
 

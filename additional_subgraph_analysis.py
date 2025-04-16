@@ -575,8 +575,16 @@ class gatedSubgraph():
 
         if not additional_arguments:
             col_selection = f"align_recon"
+            single = False
         else:
-            col_selection = f"align_morph_recon"
+            if "morph" in additional_arguments:
+                col_selection = f"align_morph_recon"
+            else:
+                col_selection = f"align_recon"
+            if "single" in additional_arguments:
+                single=True
+            else:
+                single = False
 
         gt_positions = self.reconstruction_summary[["bc", "gt_x", "gt_y"]].copy().set_index("bc")
         reconstructed_positions = self.full_reconstruction_summary.copy().set_index("node_bc")
@@ -602,15 +610,18 @@ class gatedSubgraph():
                 for original, reconstructed in zip(original_neighbors, reconstructed_neighbors):               
                     n = len(original)
                     knn_per_point.append(len(set(original).intersection(set(reconstructed[:n]))) / n)
-                    break
-                    
+                    if single:
+                        break
+
                 print(n)
                 mean_knn_per_recon.append(np.mean(knn_per_point))
 
                 ax.scatter(k, np.mean(knn_per_point), color='k', alpha = 0.3, s =5)
-                break
+                if single:
+                    break
+
             all_knns_over_k.append(np.mean(mean_knn_per_recon))
-        
+
         ax.plot(k_list, all_knns_over_k)
         # ax.axvline(total_mean, c = "r", linestyle = "--", label = label)
         ax.set_ylim([0, 1.1])
@@ -993,14 +1004,20 @@ class gatedSubgraph():
             plt.colorbar(scatter, ax=ax, label="Point Density")
         else:
             scatter = ax.scatter(x, y, s=3, c="k", edgecolor='none', alpha = 0.5)
-            scatter = ax.scatter(x2, y2, s=3, c="k", edgecolor='none', alpha = 0.5)
 
     def plot_cpd_scatter(self, ax = None, additional_arguments = []):
         from scipy.spatial.distance import pdist
         if not additional_arguments:
             type = "recon"
         else:
-            type = f"morph_recon"
+            if "morph" in additional_arguments:
+                type = f"morph_recon"
+            else:
+                type = "recon"
+            if "subsample" in additional_arguments:
+                subsample = True
+            else:
+                subsample = False
         if not ax:
             fig, ax = plt.subplots(figsize = (6,6))
 
@@ -1009,6 +1026,9 @@ class gatedSubgraph():
         recon_positions = self.full_reconstruction_summary.copy().set_index("node_bc")
         recon_positions = recon_positions.loc[gt_positions.index, :]
         recon_columns = recon_positions[[col for col in recon_positions.columns if col.startswith(type)]]
+        if subsample:
+            sampled_barcodes = np.random.choice(gt_positions.index, size=1000, replace=False)
+            gt_positions = gt_positions.loc[sampled_barcodes]
         gt_distances = pdist(gt_positions)
         x = gt_distances
         gt_distances_dict = {i: d for i, d in enumerate(gt_distances)}
@@ -1016,6 +1036,8 @@ class gatedSubgraph():
         all_cpd = []
         for i in range(len(recon_columns.columns)//2):
             recon_positions = recon_columns[[f"{type}_x_{i+1}", f"{type}_y_{i+1}"]]
+            if subsample:
+                recon_positions = recon_positions.loc[sampled_barcodes]
             recon_distances = pdist(recon_positions)
             correlation, _ = pearsonr(gt_distances, recon_distances)
             cpd_score = correlation**2
@@ -1288,9 +1310,7 @@ class gatedSubgraph():
         
         ax_beads.scatter(beads[f"{metric_str}_x_1"], beads[f"{metric_str}_y_1"], c = "k", s = 0.5, alpha = 0.4)
         ax_beads.set_aspect("equal")
-        
-        plt.show()
-        quit()
+
     def plot_recon_dist_vs_umis(self, ax = None):
         if ax == None:
             fig, ax = plt.subplots(1, 1)
@@ -1513,7 +1533,10 @@ class gatedSubgraph():
         print(gt_positions)
         pass
 
-    def plot_metric_heatmaps(self, ax=None, additional_arguments = []): 
+    def plot_metric_heatmaps(self, fig=None, additional_arguments = []): 
+        if fig:
+            plt.close(fig)
+            del fig
         if not additional_arguments:
             metric_str = f"mean_knn"
         else:
@@ -1696,10 +1719,6 @@ class gatedSubgraph():
         plt.tight_layout()
         fig.savefig(f"Images/{self.sample}_correlations.{img_format}", dpi=300, format = img_format)
 
-        plt.show()
-
-        plt.show()
-        quit()
         pass
 class gatedSubgraphCollection():
     def __init__(self, list_of_gated_subgraphs, config):
@@ -1793,7 +1812,7 @@ class gatedSubgraphCollection():
             elif plotting_type =="per_cell_cpd":
                 subgraph.plot_per_cell_cpd(ax = ax1, additional_arguments = additional_metrics)
             elif plotting_type =="metric_heatmaps":
-                subgraph.plot_metric_heatmaps(ax = ax1, additional_arguments = additional_metrics)
+                subgraph.plot_metric_heatmaps(fig = fig, additional_arguments = additional_metrics)
             else: 
                 print("No such analysis:", plotting_type)
                 

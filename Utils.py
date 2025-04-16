@@ -294,7 +294,7 @@ plot_modification = False
 modification_type = "dbscan"  #gated, enriched, dbscan
 
 vizualisation_args = {
-    "how_many_reconstructions"  : 1,                # number or "all" if there are multiple reconstructions, how many should be plotted
+    "how_many_reconstructions"  :1,                # number or "all" if there are multiple reconstructions, how many should be plotted
     "reconstruction_type"       : "recon", #recon, distortion, morphed_recon, or morphed_distortion
     "color_scheme"              : "cell_type",       # cell_type, vertical, horizontal, radius, knn, distortion, image
     "colormap"                  : "magma_r",     #Any matplotlib colormap, recommend viridis or tab10
@@ -434,6 +434,45 @@ def ensure_subgraph_filtering_directory(config, filter_type="test", threshold=1,
     ensure_directory(savepath)
     config.run_path = savepath
     return config
+
+def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthetic_sequences.csv"):
+    import pandas as pd
+    import random
+
+    # Load your DataFrame
+    df = pd.read_csv(file_name)
+    print(df)
+
+    # Define the "bases" for the new barcodes
+    new_bases = ['W', 'X', 'Y', 'Z']
+
+    # Get all unique barcodes
+    original_beads = df['bead_bc'].unique()
+    cell_barcodes = set(df['cell_bc_10x'].unique())
+
+    # Barcode length (assuming all have the same length)
+    barcode_length = len(original_beads[0])
+
+    # Helper to generate a random barcode
+    def generate_random_barcode(existing_barcodes):
+        while True:
+            barcode = ''.join(random.choices(new_bases, k=barcode_length))
+            if barcode not in existing_barcodes:
+                return barcode
+
+    # Mapping: original bead_bc -> new random barcode
+    new_barcode_map = {}
+    used_barcodes = set(cell_barcodes)  # Already used barcodes (to avoid collisions)
+
+    for old_bc in original_beads:
+        new_bc = generate_random_barcode(used_barcodes)
+        new_barcode_map[old_bc] = new_bc
+        used_barcodes.add(new_bc)
+
+    # Apply mapping to bead_bc column
+    df['bead_bc'] = df['bead_bc'].map(new_barcode_map)
+    df.to_csv(f"{destination_name}")
+
     
 def runFullFilteringAndRawSubgraphPipeline(config):
     
@@ -447,4 +486,5 @@ def runFullFilteringAndRawSubgraphPipeline(config):
     interpretConfigAndReconstruct(config)
 
 if __name__ =="__main__":
-    create_structure()
+    config = ConfigLoader('config_real.py')
+    runFullFilteringAndRawSubgraphPipeline(config)
