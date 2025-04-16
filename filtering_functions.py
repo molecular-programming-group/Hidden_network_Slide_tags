@@ -178,9 +178,10 @@ def perform_filtering(config):
     print(edgelist)
     edgelist = per_edge_umi_filtering(config)
     print(edgelist)
-    # mtx = generate_bead_cell_weight_matrix(config, edgelist)
-    # print(mtx)
-    # mtx1, mtx2 = convert_bead_cell_to_cell_cell(config, mtx)
+    if config.subgraph_processing_args_filtering.bi_or_unipartite =="uni": # THese two are quite slow, and are therefore not performed if the unipartite network is not of interest
+        mtx = generate_bead_cell_weight_matrix(config, edgelist)
+        # print(mtx)
+        mtx1, mtx2 = convert_bead_cell_to_cell_cell(config, mtx)
     # print(mtx1)
     # print(mtx2)
 

@@ -214,7 +214,7 @@ class groupedSamples():
             ax_cells.scatter(sample.cell_degree_dist[0], sample.cell_degree_dist[1], s = 4, label = f"{sample.name} N={sample.cell_degree_dist[1].sum()}", color = colors[i])
             ax_cells.axvline(sample.mean_cell_degrees, label = f"mean {sample.mean_cell_degrees:.3f} ±{sample.std_cell_degrees:.3f}", color=colors[i])
             ax_beads.scatter(sample.bead_degree_dist[0], sample.bead_degree_dist[1], s = 4, label = f"{sample.name} N={sample.bead_degree_dist[1].sum()}", color = colors[i])
-            ax_beads.axvline(sample.mean_bead_degrees, label = f"mean degree: {sample.mean_bead_degrees}", color=colors[i])
+            ax_beads.axvline(sample.mean_bead_degrees, label = f"mean degree: {sample.mean_bead_degrees:.3f}", color=colors[i])
             
             cell_degrees = sample.cell_degrees[1]  # <- Make sure this exists as a list or array of degree values
             # Remove zeros (lognorm requires positive values)
@@ -462,7 +462,11 @@ class analysisSample():
         if true_name:
             self.name = true_name
         self.gt_positions_file = gt_positions
-        self.edges = pd.read_csv(f"Intermediary_files/{sample}/{specific_edgelist}") 
+        try:
+            self.edges = pd.read_csv(f"Intermediary_files/{sample}/{specific_edgelist}") 
+        except:
+            specific_edgelist = "all_cells_synthetic.csv"
+            self.edges = pd.read_csv(f"Intermediary_files/{sample}/{specific_edgelist}") 
         if os.path.isfile(f"Intermediary_files/{sample}/only_spatial_cells.csv"):
             self.only_spatial_cells_edges = pd.read_csv(f"Intermediary_files/{sample}/only_spatial_cells.csv") 
         else:

@@ -30,7 +30,10 @@ class gatedSubgraph():
         self.edgelist["std_distance"] = selected_columns.std(axis = 1)
         self.edgelist["max_diff_distance"] = selected_columns.max(axis=1) - selected_columns.min(axis=1)
         self.sample = self.file_location.split(os.sep)[1]
-        self.base_edges = pd.read_csv(f"Intermediary_files/{self.sample}/all_cells.csv") 
+        try:
+            self.base_edges = pd.read_csv(f"Intermediary_files/{self.sample}/all_cells.csv") 
+        except:
+            self.base_edges = pd.read_csv(f"Intermediary_files/{self.sample}/all_cells_synthetic.csv") 
         self.gating_threshold = re.search(rf"gated_(\d+)", self.name)
 
         if self.gating_threshold == None:
@@ -1777,20 +1780,20 @@ class gatedSubgraphCollection():
             elif plotting_type =="cell_types":
                 subgraph.per_cell_type_metrics(fig = fig, additional_arguments = additional_metrics) 
             elif plotting_type =="cpd":
-                subgraph.plot_cpd_scatter(ax = ax1, additional_arguments = additional_arguments)
+                subgraph.plot_cpd_scatter(ax = ax1, additional_arguments = additional_metrics)
                 save_format = "png"
-                if additional_arguments and i == self.n_subgraphs-1:
-                    plotting_type = plotting_type + "_" + str(additional_arguments[0])
+                if additional_metrics and i == self.n_subgraphs-1:
+                    plotting_type = plotting_type + "_" + str(additional_metrics[0])
             elif plotting_type == "umi_vs_dist":
                 subgraph.plot_recon_dist_vs_umis(ax = ax1)
             elif plotting_type =="knn_over_density":
-                subgraph.plot_density_vs_knn(ax = ax1, additional_arguments = additional_arguments)
+                subgraph.plot_density_vs_knn(ax = ax1, additional_arguments = additional_metrics)
             elif plotting_type =="knn_over_umis":
-                subgraph.plot_umis_vs_knn(ax = ax1, additional_arguments = additional_arguments)
+                subgraph.plot_umis_vs_knn(ax = ax1, additional_arguments = additional_metrics)
             elif plotting_type =="per_cell_cpd":
-                subgraph.plot_per_cell_cpd(ax = ax1, additional_arguments = additional_arguments)
+                subgraph.plot_per_cell_cpd(ax = ax1, additional_arguments = additional_metrics)
             elif plotting_type =="metric_heatmaps":
-                subgraph.plot_metric_heatmaps(ax = ax1, additional_arguments = additional_arguments)
+                subgraph.plot_metric_heatmaps(ax = ax1, additional_arguments = additional_metrics)
             else: 
                 print("No such analysis:", plotting_type)
                 
@@ -1804,7 +1807,7 @@ class gatedSubgraphCollection():
         # plt.tight_layout()
         subgraph.save_plot(fig, type = plotting_type, category = "analysis", format = save_format)
     
-    def plot_positions(self, plotting_type = None, additional_arguments =[]):
+    def plot_positions(self, plotting_type = None, additional_metrics =[]):
         n_subgraphs = self.n_subgraphs
         save_format = self.config.vizualisation_args.save_to_image_format
         max_columns = 6
@@ -1838,13 +1841,13 @@ class gatedSubgraphCollection():
             if plotting_type == "beads":
                 subgraph.plot_only_beads(ax = ax1) 
             elif plotting_type == "gt_uni_edges":
-                subgraph.plot_gt_edges(ax = ax1, ax_hist = ax2, type = plotting_type, additional_arguments=additional_arguments) 
+                subgraph.plot_gt_edges(ax = ax1, ax_hist = ax2, type = plotting_type, additional_arguments=additional_metrics) 
             elif plotting_type =="edges_beads_est":
                 subgraph.plot_edges_gt_estimated_beads(ax = ax1)
             elif plotting_type == "cell_types":
-                subgraph.plot_cell_types(fig = fig, additional_arguments = additional_arguments, subgraph_collection=self)
+                subgraph.plot_cell_types(fig = fig, additional_arguments = additional_metrics, subgraph_collection=self)
             elif plotting_type =="node_types":
-                subgraph.plot_node_types(fig = fig, additional_arguments = additional_arguments)
+                subgraph.plot_node_types(fig = fig, additional_arguments = additional_metrics)
                 print("No such analysis:", plotting_type)
             
         
@@ -1901,7 +1904,7 @@ def additional_subgraph_analysis(config, category =None, plotting_type = None, a
             all_subgraphs.plot_all_subgraphs(plotting_type=plotting_type, additional_metrics=additional_arguments)
         elif category == "positions":
             # all_subgraphs.plot_positions(plotting_type = "beads")
-            all_subgraphs.plot_positions(plotting_type = plotting_type, additional_arguments = additional_arguments)
+            all_subgraphs.plot_positions(plotting_type = plotting_type, additional_metrics = additional_arguments)
         else:
             print("No such category:", category)
         # print(subgraph.quality_df)
