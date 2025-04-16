@@ -1,0 +1,34 @@
+"analyse" - options
+(* or ** indicates it needs one or two additional arguments)
+---
+distance_variation_metrics  - A scatterplot of each edge's reconstructed distance mean against standard deviation   !!!
+distance_distribution       - Histogram of the distribution of edge mean distances in the reconstruction
+distance_distribution_std   - Histogram of the distribution of edge distances standard deviation over multiple reconstructions  !!!
+distortion                  - Overlapped histograms of the distrotions distributions for all reconstructions
+knn                         - Scatterplot of the frequency of each KNN value for all reconstructions
+edge_distance               - Scatterplot of something?                                                 !!!
+knn_over_k                  - Showing KNN as it varies over differnt values of K                                !!!
+metric_correlation          - Scatterplot of mean distortions over mean KNN values for each cell individually   !!!
+metric_correlation_std      - Same except standard deviation instead of mean                                    !!!
+dbscan_calculation**        - Calculates the DBSCAN cluster of each cell-connected beads and modified the reconstruction summary to save how manu clusters each cell generates !!!
+dbscan_analysis             - Barplots showing the distribution of numbers of cluster as well as percentage of 1-cluster cells  !!!
+normal_vs_morphed*          - Compares the distortion distributions between morphed and unmorphed coordinates       !!!
+cell_types                  - Violin plots of the KNN distributions separated by cell types
+cpd                         - Scatterplot of the reconstructed distances against the reference distances        !!!
+umi_vs_dist                 - Scatterplot of the reconstructed distance vs the number of UMIS associated to that edge !!!
+knn_over_density            - Scatterplot of the KNN value over cell density        !!!
+knn_over_umis               - scatterplot of the KNN value of the sum of UMIS for each cell !!!
+per_cell_cpd                - per cell PCD - WIP
+metric_heatmaps             - Heatmpas of the reference positions coloured by density, UMI density, KNN, and degree !!!
+
+---
+
+"positions" - options
+(* or ** indicates it needs one or two additional arguments)
+---
+beads                       - Scatterplot of reconstructed bead positions !!!
+gt_uni_edges                - Scatterplot of the reference positions with the unipartite projection drawn out and a Histogram of the distribution of edge lengths
+edges_beads_est             - Bead positions estimated based on the edges adn the cell reference positions !!!
+cell_types                  - Scatterplots of the reference and reconstructed positions separated by cell types !!!
+node_types                  - Scatterplot of the reconstructed bead and cells-with-reference positions
+---
