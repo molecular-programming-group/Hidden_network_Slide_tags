@@ -136,23 +136,24 @@ class gatedSubgraph():
 
 
         # Add LineCollection for edges
-        line_collection = LineCollection(lines, color="k", linewidths=2, alpha=0.7)
-        ax.add_collection(line_collection)
+        line_collection = LineCollection(lines, color="k", linewidths=2, alpha=0.5)
+        
 
         # Scatter plot of `source_bc` positions
         
 
         # Scatter plot of `target_bc` positions (averaged)
-        ax.scatter(df_avg_positions["gt_x"], df_avg_positions["gt_y"], c="b", s=3, label="Target BCs", alpha = 0.1)
-        ax.scatter(df_sample["gt_x_source"], df_sample["gt_y_source"], c=df_sample["colors"], s=50, label="Source BCs", zorder =5)
 
+        ax.scatter(df_avg_positions["gt_x"], df_avg_positions["gt_y"], c="k", s=2, label="beads", alpha = 0.1)
+        # ax.scatter(gt_positions["gt_x"], gt_positions["gt_y"], c="b", s=10, label="cells", alpha = 1.0)
+        ax.scatter(df_sample["gt_x_source"], df_sample["gt_y_source"], c="w", s=50, label="Example cells", zorder =5, linewidth =0.5, edgecolors = "k")
+        ax.add_collection(line_collection)
+        print(df_avg_positions['gt_x'])
         # Formatting
-        ax.set_xlabel("X Position")
+        ax.set_xlabel(f"{len(df_avg_positions['gt_x'])}")
         ax.set_ylabel("Y Position")
         ax.legend()
         ax.autoscale()
-
-        plt.show()
 
 
     def plot_gt_edges(self, ax = None, ax_hist = None, type = "gt_uni_edges", additional_arguments = []):
@@ -459,32 +460,59 @@ class gatedSubgraph():
         else:
             raise Exception(f"0 or more than one file found for {self.name}: {matching_files}")
         
-    def plot_reconstruction_metric_correlation(self,ax = None,  additional_arguments = [], bins = 100, type = "mean"):
-        if not additional_arguments:
+    def plot_reconstruction_metric_correlation(self, ax = None,  additional_arguments = [], bins = 100, type = "mean"):
+
+        if "morph" in additional_arguments:
+            metric_1 = "morphed_knn"
+            metric_2 = "morphed_distortion"
+        else:
             metric_1 = "knn"
             metric_2 = "distortion"
+
+        if type =="std":
+            x_data_cols = self.reconstruction_summary[[col for col in self.reconstruction_summary.columns if col.startswith(metric_1)]]
+            y_data_cols = self.reconstruction_summary[[col for col in self.reconstruction_summary.columns if col.startswith(metric_2)]]
+            x_data = x_data_cols.std(axis =1)
+            y_data = y_data_cols.std(axis =1)
         else:
-            metric_1 = additional_arguments[0]
-            metric_2 = additional_arguments[1]
+            x_data = self.reconstruction_summary[f"{type}_{metric_1}"]
+            y_data = self.reconstruction_summary[f"{type}_{metric_2}"]
+
         if ax == None:
             fig, ax = plt.subplots(figsize = (6,6))
 
-        x_data = self.reconstruction_summary[f"{type}_{metric_1}"]
-        y_data = self.reconstruction_summary[f"{type}_{metric_2}"]
+
         try:
             slope, intercept, r_value, p_value, std_err = linregress(x_data, y_data)
         except:
             slope, intercept, r_value, p_value, std_err = 1, 0, 0, 0, 0
-        
-        ax.set_xlim([0, 1])
-        ax.set_ylim([0, 1])
+        bins = 100
+
+        # Compute 2D histogram (density per bin)
+        density, xedges, yedges = np.histogram2d(x_data, y_data, bins=bins)
+
+        # Digitize points to get which bin each one falls into
+        x_bin_idx = np.digitize(x_data, xedges) - 1
+        y_bin_idx = np.digitize(y_data, yedges) - 1
+
+        # Clip indices to avoid index errors (edges)
+        x_bin_idx = np.clip(x_bin_idx, 0, bins - 1)
+        y_bin_idx = np.clip(y_bin_idx, 0, bins - 1)
+
+        # Get density value for each point
+        point_densities = density[x_bin_idx, y_bin_idx]
+
+        # Normalize densities (optional, for colormap scaling)
+        point_densities = point_densities / point_densities.max()
+        sc = ax.scatter(x_data, y_data, c=point_densities, cmap='magma_r', s=4)
         x = np.linspace(x_data.min(), x_data.max(), 100)
         y = slope * x + intercept
+        ax.figure.colorbar(sc, ax=ax, label="Normalized Density")
         ax.plot(x, y, color="red", label=f"Fit (R²={r_value**2:.2f})")
-        ax.scatter(x_data, y_data, s = 4)
         ax.set_xlabel(f"{type} {metric_1}")
         ax.set_ylabel(f"{type} {metric_2}")
         ax.legend()
+
 
     def plot_gt_reconstruction_metric_distribution(self, ax = None, metric = "knn", additional_arguments = []):
         
@@ -632,12 +660,12 @@ class gatedSubgraph():
         ax.set_box_aspect(1)
 
     def plot_no_gt_metric_correlation(self, ax=None, metric_1 = "mean", metric_2 = "std"):
-        
-        if self.n_reconstructions <3 and (metric_1=="std" or metric_2 =="std" or metric_1=="max_diff" or metric_2 =="max_diff"):
+        if self.n_reconstructions <2 and (metric_1=="std" or metric_2 =="std" or metric_1=="max_diff" or metric_2 =="max_diff"):
             return
         if ax == None:
             fig, ax = plt.subplots(1, 1)
         edges = self.edgelist
+        print(self.gating_threshold)
         try:
             slope, intercept, r_value, p_value, std_err = linregress(edges[f"{metric_1}_distance"], edges[f"{metric_2}_distance"])
         except:
@@ -647,14 +675,33 @@ class gatedSubgraph():
         y = slope * x + intercept
         ax.plot(x, y, color="red", label=f"Fit (R²={r_value**2:.2f})")
 
-        ax.scatter(edges[f"{metric_1}_distance"], edges[f"{metric_2}_distance"], s = 3)
+        x_data = edges[f"{metric_1}_distance"]
+        y_data = edges[f"{metric_2}_distance"]
+        bins = 100
+        density, xedges, yedges = np.histogram2d(x_data, y_data, bins=bins)
+
+        # Digitize points to get which bin each one falls into
+        x_bin_idx = np.digitize(x_data, xedges) - 1
+        y_bin_idx = np.digitize(y_data, yedges) - 1
+
+        # Clip indices to avoid index errors (edges)
+        x_bin_idx = np.clip(x_bin_idx, 0, bins - 1)
+        y_bin_idx = np.clip(y_bin_idx, 0, bins - 1)
+
+        # Get density value for each point
+        point_densities = density[x_bin_idx, y_bin_idx]
+
+        # Normalize densities (optional, for colormap scaling)
+        point_densities = point_densities / point_densities.max()
+        ax.scatter(x_data, y_data, c= point_densities, s = 1, cmap = "magma_r")
         ax.set_xlabel(f"distance {metric_1}")
         ax.set_ylabel(f"distance {metric_2}")
+
         ax.set_ylim([0,1])
         ax.set_xlim([0,1])
-        ax.legend()
+        ax.legend(loc ="upper left")
 
-        ax.set_title(f"reconstructed_distance_variance\n{len(edges)} edges")
+        # ax.set_title(f"reconstructed_distance_variance\n{len(edges)} edges")
 
     def plot_distance_distribution(self, ax=None, data_type = "mean"):
         # fi g, ax = plt.subplots(1, 1)
@@ -803,7 +850,7 @@ class gatedSubgraph():
         cbar.set_label("N cells per category")
         plt.tight_layout()
     
-    def analyse_dbscan_clusters(self, ax = None, ms = [5]):
+    def analyse_dbscan_clusters(self, ax = None, additional_arguments = []):
         if not additional_arguments:
             min_samples = range(5, 21)
             eps_percent = [5]
@@ -838,14 +885,13 @@ class gatedSubgraph():
                 all_nodes = self.find_modified_full_reconstruction()
                 all_cells = all_nodes.loc[all_nodes["node_type"]!="bead", :]
                 clustered_cells = all_nodes.loc[all_nodes[f"dbscan_clusters_ms={ms}_eps={eps}"]!=-1, :]
-
-                no_gt_cells = all_cells.loc[all_cells["type_prediction_score"]!=-1, :]
+                no_gt_cells = all_cells.loc[((all_cells["type_prediction_score"]!=-1) | (all_cells["node_type"] == "unknown_cell")), :]
                 counts_no_gt = no_gt_cells[f"dbscan_clusters_ms={ms}_eps={eps}"].value_counts().sort_index()
                 counts_df_no_gt = counts_no_gt.reset_index()
                 counts_df_no_gt.columns = [f"dbscan_clusters_ms={ms}_eps={eps}", "Frequency_no_gt"]
 
                 # Get gt cells (type_prediction_score == -1)
-                gt_cells = all_cells.loc[all_cells["type_prediction_score"] == -1, :]
+                gt_cells = all_cells.loc[((all_cells["type_prediction_score"] == -1) | (all_cells["node_type"] != "unknown_cell")), :]
                 counts_gt = gt_cells[f"dbscan_clusters_ms={ms}_eps={eps}"].value_counts().sort_index()
                 counts_df_gt = counts_gt.reset_index()
                 counts_df_gt.columns = [f"dbscan_clusters_ms={ms}_eps={eps}", "Frequency_gt"]
@@ -914,74 +960,107 @@ class gatedSubgraph():
         row_index = dbscan_results["new_single_cluster_cells"].idxmax()
         row = dbscan_results.loc[row_index]
         print(row)
+        pivot_cols = ['total_single_cluster_cells', 'gt_single_cluster_cells', 'new_single_cluster_cells']
+        X = dbscan_results['min_sample'].values
+        Y = dbscan_results['eps%'].values
+
+        # Unique sorted values for creating meshgrid
+        x_unique = np.sort(dbscan_results['min_sample'].unique())
+        y_unique = np.sort(dbscan_results['eps%'].unique())
+        X_mesh, Y_mesh = np.meshgrid(x_unique, y_unique)
+
+        # Create 3D surface plots
+        figs = []
+        for i, col in enumerate(pivot_cols):
+            Z_grid = dbscan_results.pivot_table(index='eps%', columns='min_sample', values=col).values
+            
+            fig = plt.figure(figsize=(8, 6))
+            ax = fig.add_subplot(111, projection='3d')
+            surf = ax.plot_surface(X_mesh, Y_mesh, Z_grid, cmap=cm.magma, edgecolor='k')
+            
+            ax.set_xlabel('min_sample')
+            ax.set_ylabel('eps%')
+            ax.set_zlabel(col.replace('_', ' ').title())
+            ax.set_title(f'3D Surface Plot of {col}')
+            fig.colorbar(surf, ax=ax, shrink=0.5, aspect=10)
+            
+            plt.tight_layout()
+        plt.show()
         return fig
     
-    def compare_normal_and_morphed(self, metric = "distortion", ax_normal = None, ax_morph = None, type =None):
+    def compare_normal_and_morphed_distortion(self, metric = "distortion", ax_normal = None, ax_morph = None, type =None):
         if ax_normal == None or ax_morph == None:
             fig, (ax_normal, ax_morph ) = plt.subplots(1, 2, figsize = (12, 6))
 
-        print(self.reconstruction_summary)
-        print(self.gating_threshold)
         morph_columns = self.reconstruction_summary[[col for col in self.reconstruction_summary.columns if col.startswith(f"morphed_{metric}")]]
         morph_statistics = []
-        for i in range(len(morph_columns.columns)):
-            current_data = morph_columns[f"morphed_{metric}_{i+1}"]
-            if metric == "distortion":
-                current_data = 100*current_data/self.max_gt_dist
-                plot_metric = "relative_distortion (%)"
-            if metric == "knn":
-                x = np.linspace(0, 1, 1000)
-                bins = 10
-            else:
-                x = np.linspace(current_data.min(), current_data.max(), 1000)
-            ax_morph.hist(current_data.values, bins = len(current_data)%200, density=True, alpha = 0.3)
-            kde = gaussian_kde(current_data)
-            kde_y = kde(x)
-            
-            ax_morph.set_title(f"{self.gating_threshold}\nmorphed {metric}s")
-            morph_statistics.append(current_data.median())
-        ax_morph.axvline(np.mean(morph_statistics), c = "r", linestyle = "--", label = f"mean of means: {np.mean(morph_statistics):.4f}")
-        ax_morph.plot(x, kde_y, label="KDE", color='m', linestyle='-', linewidth=1)
-
-        ax_morph.set_xlim([0, 100])
-        ax_morph.set_xlabel(f"{plot_metric}")
-        ax_morph.set_ylabel("frequency")
-        ax_morph.legend()
-
+        global_min_morph = morph_columns.min().min()
+        global_max_morph = morph_columns.max().max()
+        
         normal_columns = self.reconstruction_summary[[col for col in self.reconstruction_summary.columns if col.startswith(f"{metric}")]]
         normal_statistics = []
+        global_min_standard = normal_columns.min().min()
+        global_max_standard = normal_columns.max().max()
+        global_min = np.min([global_min_standard, global_min_morph])
+        global_max = np.min([global_max_standard, global_max_morph])
+
+        num_bins = 200  # or any fixed number you want
+        shared_bins = np.linspace(global_min, global_max, num_bins + 1)
+
+        for i in range(len(morph_columns.columns)):
+            current_data = morph_columns[f"morphed_{metric}_{i+1}"]
+
+            plot_metric = "Distortion (µm)"
+
+            x = np.linspace(global_min, global_max, 1000)
+            
+            kde = gaussian_kde(current_data)
+            kde_y = kde(x)
+            morph_statistics.append(current_data.median())
+            if type != "scatter":
+                ax_morph.hist(current_data.values, bins = shared_bins, density=True, alpha = 0.3)
+                ax_morph.set_title(f"Morphed {metric}s")
+            
+        if type != "scatter":
+            ax_morph.axvline(np.mean(morph_statistics), c = "r", linestyle = "--", label = f"mean of means: {np.mean(morph_statistics):.4f}")
+            ax_morph.plot(x, kde_y, label="KDE", color='m', linestyle='-', linewidth=1)
+
+            ax_morph.set_xlabel(f"{plot_metric}")
+            ax_morph.set_ylabel("frequency")
+            ax_morph.legend()
+
+
         for i in range(len(normal_columns.columns)):
             current_data = normal_columns[f"{metric}_{i+1}"]
-            if metric == "distortion":
-                current_data = 100*current_data/self.max_gt_dist
-                plot_metric = "relative_distortion (%)"
-            if metric == "knn":
-                x = np.linspace(0, 1, 1000)
-                bins = 10
-            else:
-                x = np.linspace(current_data.min(), current_data.max(), 1000)
-            ax_normal.hist(current_data.values, bins = len(current_data)%200, density=True, alpha = 0.3)
+
+            plot_metric = "Distortion (µm)"
+
+            x = np.linspace(global_min, global_max, 1000)
+            
 
             kde = gaussian_kde(current_data)
             kde_y = kde(x)
             normal_statistics.append(current_data.median())
-            
-            ax_normal.set_title(f"{self.gating_threshold}\nunmorphed {len(current_data)}s")
-        ax_normal.axvline(np.mean(normal_statistics), c = "r", linestyle = "--", label = f"mean of means: {np.mean(normal_statistics):.4f}")
-        ax_normal.plot(x, kde_y, label="KDE", color='m', linestyle='-', linewidth=1)
-        ax_normal.set_xlim([0, 100])
-        # ax_normal.set_xlabel(f"{plot_metric}")
+            if type != "scatter":
+                ax_normal.hist(current_data.values, bins = shared_bins, density=True, alpha = 0.3)
+                ax_normal.set_title(f"{self.gating_threshold}\nunmorphed {len(current_data)} ")
+        if type != "scatter":
+            ax_normal.axvline(np.mean(normal_statistics), c = "r", linestyle = "--", label = f"mean of medians: {np.mean(normal_statistics):.4f}")
+            ax_normal.plot(x, kde_y, label="KDE", color='m', linestyle='-', linewidth=1)
 
-        ax_normal.set_ylabel("frequency")
-        ax_normal.legend()
-        print(morph_statistics)
-        print(normal_statistics)
+            ax_normal.set_ylabel("frequency")
+            ax_normal.legend()
+
         if type == "scatter":
             fig, ax_scatter = plt.subplots(1, 1, figsize = (6, 6))
+            ax_scatter.set_title(f"{self.gating_threshold}")
             ax_scatter.scatter(morph_statistics, normal_statistics)
             line = np.linspace(0, np.max(normal_statistics)*1.1, 10)
             ax_scatter.plot(line, line, c = "r")
+            ax_scatter.set_ylabel("Unmorphed")
+            ax_scatter.set_xlabel("Morphed")
     
+
     def plot_only_beads(self, ax = None, additional_arguments = [], density_coloring = False):
         if additional_arguments:
             density_coloring = additional_arguments[0]
@@ -1171,6 +1250,7 @@ class gatedSubgraph():
             
             if cell_type=="unknown_cell" or cell_type =="bead": #cell_type !="B_germinal_center"
                 continue
+            cell_color = self.colors[cell_type]
             fig, ((ax_new_cells, ax_old_cells, ax_gt),(al1, al2, al3)) = plt.subplots(2, 3, figsize = (16, 12))
             all_typed_cells = full_recon.loc[cell_type, :].set_index("node_ID")
             gt_typed_cells = quality_metrics_and_gt.loc[cell_type, :]
@@ -1179,6 +1259,7 @@ class gatedSubgraph():
             base_gt_typed_cells = base_quality_metrics_and_gt.loc[cell_type, :]
             print(all_typed_cells)
             ms = 12
+            eps = 5
             dbscan_values = base_all_typed_cells[[col for col in base_all_typed_cells.columns if col.startswith(f"dbscan_clusters_ms={ms}_eps={eps}")]]
             norm = plt.Normalize(0, vmax=dbscan_values.max())
             cmap = plt.cm.plasma
@@ -1217,24 +1298,24 @@ class gatedSubgraph():
 
             ax_new_cells.scatter(new_cells["align_morph_recon_x_1"], new_cells["align_morph_recon_y_1"], s = sizes, c=colors)
             ax_new_cells.set_aspect("equal")
-            ax_new_cells.set_title(f"cells close to old: {num_fulfilling}/{len(num_neighbors)}")
-            ax_old_cells.scatter(gt_cells["align_morph_recon_x_1"], gt_cells["align_morph_recon_y_1"], s = 5, c="g")
+            ax_new_cells.set_title(f"new cells close to old: {num_fulfilling}/{len(num_neighbors)}")
+            ax_old_cells.scatter(gt_cells["align_morph_recon_x_1"], gt_cells["align_morph_recon_y_1"], s = 5, c=cell_color)
             # ax_old_cells.set_box_aspect(1)
             ax_old_cells.set_aspect("equal")
-            ax_gt.scatter(gt_typed_cells["gt_x"], gt_typed_cells["gt_y"], s = 3, c="g") #cmap(norm(gt_cells_dbscan_values))
+            ax_gt.scatter(gt_typed_cells["gt_x"], gt_typed_cells["gt_y"], s = 3, c=cell_color) #cmap(norm(gt_cells_dbscan_values))
             # ax_gt.set_box_aspect(1)
             ax_gt.set_aspect("equal")
-            ax_gt.set_title(f"")
-            ax_old_cells.set_title(f"N cells: {len(gt_typed_cells)} avg {threshold_neighbors} cell redius: {radius:.0f}")
+            ax_gt.set_title(f"Reference positions")
+            ax_old_cells.set_title(f"Original N cells: {len(gt_typed_cells)} avg {threshold_neighbors} cell radius: {radius:.0f}")
             for (x, y), is_high_density in zip(new_cell_points, high_density_mask):
                 if is_high_density:  # Draw only for cells that meet the density requirement
                     circle = plt.Circle((x, y), radius, color='gray', fill=False, linestyle='dashed', alpha=0.5)
                     ax_new_cells.add_patch(circle)
-            al1.scatter(gt_cells["align_morph_recon_x_1"], gt_cells["align_morph_recon_y_1"], s = 4,c = "g", alpha = 0.5)#, alpha = norm(gt_cells_dbscan_values))
-            al1.scatter(new_cells["align_morph_recon_x_1"], new_cells["align_morph_recon_y_1"], s = sizes,c = colors)#,  alpha = norm(new_cells_dbscan_values))
+            al1.scatter(gt_cells["align_morph_recon_x_1"], gt_cells["align_morph_recon_y_1"], s = 4,c = cell_color)#, alpha = norm(gt_cells_dbscan_values))
+            al1.scatter(new_cells["align_morph_recon_x_1"], new_cells["align_morph_recon_y_1"], s = sizes, c = colors)#,  alpha = norm(new_cells_dbscan_values))
             # al2.set_box_aspect(1)
             al1.set_aspect("equal")
-
+            al1.set_title(f"All reconstructed cells")
 
             bc_indexed_typed_cells = gt_typed_cells.copy().set_index("bc")
             bc_indexed_gt_cells = gt_cells.copy().set_index("node_bc")
@@ -1260,9 +1341,10 @@ class gatedSubgraph():
             print(gt_cells)
 
 
-            al3.scatter(bc_indexed_gt_cells["align_morph_recon_x_1"], bc_indexed_gt_cells["align_morph_recon_y_1"], s = 0, c ="g")
+            al3.scatter(bc_indexed_gt_cells["align_morph_recon_x_1"], bc_indexed_gt_cells["align_morph_recon_y_1"], s = 0, c =cell_color)
             al3.scatter(bc_indexed_gt_cells["gt_x"], bc_indexed_gt_cells["gt_y"], s = 0, c = "k") #cmap(norm(gt_cells_dbscan_values))
             al3.set_aspect("equal")
+            al3.set_title("Distortions")
             plt.suptitle(f"{cell_type}")
             
 
@@ -1273,6 +1355,7 @@ class gatedSubgraph():
 
             al2.set_xlim(0, self.max_gt_dist)
             al2.hist(line_lengths, bins=bin_edges)
+            al2.set_title(f"Distortion distribution")
             # plt.show()
     def plot_node_types(self, fig = None, additional_arguments = []):
         print(self.full_reconstruction_summary)
@@ -1384,7 +1467,26 @@ class gatedSubgraph():
             # Optional: Add a background box for readability
             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7)
         )
-        ax.scatter(combined_df["nUMI"], combined_df[metric_str], s = 10)
+        x_data = combined_df["nUMI"]
+        y_data = combined_df[metric_str]
+        bins = 100
+        density, xedges, yedges = np.histogram2d(x_data, y_data, bins=bins)
+
+        # Digitize points to get which bin each one falls into
+        x_bin_idx = np.digitize(x_data, xedges) - 1
+        y_bin_idx = np.digitize(y_data, yedges) - 1
+
+        # Clip indices to avoid index errors (edges)
+        x_bin_idx = np.clip(x_bin_idx, 0, bins - 1)
+        y_bin_idx = np.clip(y_bin_idx, 0, bins - 1)
+
+        # Get density value for each point
+        point_densities = density[x_bin_idx, y_bin_idx]
+
+        # Normalize densities (optional, for colormap scaling)
+        point_densities = point_densities / point_densities.max()
+        ax.scatter(x_data, y_data, c= point_densities, s = 2, cmap = "magma_r")
+
         ax.set_xscale("log")
 
     def plot_density_vs_knn(self, ax = None, additional_arguments = []):
@@ -1399,10 +1501,31 @@ class gatedSubgraph():
         self.reconstruction_summary_with_density["nUMI"] = umis_per_cell
         print(self.reconstruction_summary_with_density)
         print(umis_per_cell)
+
         bc_fused = self.reconstruction_summary_with_density.copy().merge(umis_per_cell.rename('nUMI_10x'), left_on='bc', right_index=True, how='left')
         bc_fused = bc_fused.merge(degree_per_cell.rename('degree'), left_on='bc', right_index=True, how='left')
+        
+        bins = 100
 
-        ax.scatter(bc_fused["density"], bc_fused[metric_str], s = 2)
+        # Compute 2D histogram (density per bin)
+        x_data = bc_fused["density"]
+        y_data = bc_fused[metric_str]
+        density, xedges, yedges = np.histogram2d(x_data, y_data, bins=bins)
+
+        # Digitize points to get which bin each one falls into
+        x_bin_idx = np.digitize(x_data, xedges) - 1
+        y_bin_idx = np.digitize(y_data, yedges) - 1
+
+        # Clip indices to avoid index errors (edges)
+        x_bin_idx = np.clip(x_bin_idx, 0, bins - 1)
+        y_bin_idx = np.clip(y_bin_idx, 0, bins - 1)
+
+        # Get density value for each point
+        point_densities = density[x_bin_idx, y_bin_idx]
+
+        # Normalize densities (optional, for colormap scaling)
+        point_densities = point_densities / point_densities.max()
+        ax.scatter(x_data, y_data, c= point_densities, s = 2, cmap = "magma_r")
 
         
         correlation = bc_fused["density"].corr(bc_fused[metric_str], method='spearman')**2 # method='pearson' is default
@@ -1779,7 +1902,7 @@ class gatedSubgraphCollection():
                 subgraph.plot_distance_distribution(ax=ax1)
             elif plotting_type == "distance_distribution_std":
                 subgraph.plot_distance_distribution(ax=ax1, data_type="std")
-            elif plotting_type in ["distortion", "knn", "edge_distance"]: # edge distance here is the per cella verage edge distance
+            elif plotting_type in ["distortion", "knn"]: # edge distance here is the per cella verage edge distance
                 subgraph.plot_gt_reconstruction_metric_distribution(ax=ax1, metric=plotting_type, additional_arguments = additional_metrics)
             elif plotting_type == "knn_over_k":
                 subgraph.plot_knn_over_k(ax = ax1, additional_arguments=additional_metrics)
@@ -1791,11 +1914,11 @@ class gatedSubgraphCollection():
                 subgraph.calculate_recon_dbscan_clusters(additional_arguments=additional_metrics)
                 subgraph.save_modified_full_reconstruction_summary()
             elif plotting_type == "dbscan_analysis":
-                fig = subgraph.analyse_dbscan_clusters(ms=additional_metrics)
+                fig = subgraph.analyse_dbscan_clusters(additional_arguments=additional_metrics)
             #dual plotting type plots
             elif plotting_type == "normal_vs_morphed":
-                subgraph.compare_normal_and_morphed(ax_normal=ax1, ax_morph=ax2)
-                subgraph.compare_normal_and_morphed(ax_normal=ax1, ax_morph=ax2, type = "scatter")
+                subgraph.compare_normal_and_morphed_distortion(ax_normal=ax1, ax_morph=ax2)
+                subgraph.compare_normal_and_morphed_distortion(ax_normal=ax1, ax_morph=ax2, type = "scatter")
             elif plotting_type =="cell_types":
                 subgraph.per_cell_type_metrics(fig = fig, additional_arguments = additional_metrics) 
             elif plotting_type =="cpd":
@@ -1937,15 +2060,15 @@ if __name__== "__main__":
     # config_subgraph_analysis_mouse_embryo, config_subgraph_analysis_mouse_hippocampus, config_subgraph_analysis_tonsil, config_subgraph_analysis_mouse_embryo_uni
     # config = ConfigLoader('config_subgraph_analysis_tonsil.py')
     # config_analysis
-    config = ConfigLoader('config_subgraph_analysis_tonsil.py')
+    config = ConfigLoader('config_subgraph_analysis.py')
     # config.vizualisation_args.save_to_image_format = "pdf" 
-    categories = ["analyse"] # analyse or position
-    plot_what = ["dbscan_calculation", "dbscan_analysis"]
+    categories = ["positions"] # analyse or positions
+    plot_what = ["edges_beads_est"]
     # standard set of runs
     # categories = ["analyse"]
     # plot_what = ["dbscan_calculation", "dbscan_analysis"]
     # plotting_type = "gt_uni_edges"
-    additional_arguments = [range(5, 16), range(2,8)]
+    additional_arguments = []
     for cat in categories:
         for plotting_type in plot_what:
             additional_subgraph_analysis(config, category = cat, plotting_type = plotting_type, additional_arguments = additional_arguments)

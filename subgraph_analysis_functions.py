@@ -1199,8 +1199,8 @@ class subgraphToAnalyse():
             self.additional_initialization_and_saving_reconstruction_metrics(save_type=name_qa_file)
             if not self.all_unaligned_morphed_reconstructions:
                 # self.all_morphed_reconstructions = self.all_aligned_reconstructions # for testing
-                # self.calculated_morphed_reconstructions()
-                self.all_unaligned_morphed_reconstructions = self.all_aligned_reconstructions
+                self.calculated_morphed_reconstructions()
+                # self.all_unaligned_morphed_reconstructions = self.all_aligned_reconstructions
                 self.optimize_reconstruction_alignment()
             print("Saving Morphed reconstruction quality metrics")
             self.additional_initialization_and_saving_reconstruction_metrics(save_type=name_qa_file, calc_type="morphed")
@@ -1733,8 +1733,10 @@ def initialize_post_subgraph_analysis(config, initial = False):
 
 def analyze_subgraph_enrichment(config):
     all_subgraphs = subgraphCollection(config.subgraph_location, config)
-
-    base_edgelist = pd.read_csv(f"Intermediary_files/{config.sample_name}/{config.base_network_args.unfiltered_edge_file}")
+    try:
+        base_edgelist = pd.read_csv(f"Intermediary_files/{config.sample_name}/{config.base_network_args.unfiltered_edge_file}")
+    except:
+        base_edgelist = pd.read_csv(f"Intermediary_files/{config.sample_name}/all_cells_synthetic.csv")
 
     for subgraph_file in config.all_base_subgraph_files:
         print("Reading edgelist")
