@@ -105,7 +105,9 @@ class Pointcloud(): #This class is mainly used to save and process the ground tr
 #         self.original_edgelist = edgelist
 
 def create_structure(): 
-
+    '''
+    This function makes the folders used for the rest of the pipeline, in additional to creating the default config files
+    '''
     ensure_directory("Input_files")
     ensure_directory("Intermediary_files")
     ensure_directory("Images")
@@ -338,7 +340,10 @@ visualization_args = {
             with open(f"Configs/{str}.py", 'w') as file:
                 file.write(content)
 
-def dictRandomcellColors(nucleus_coordinates):  # This functions generate a random color for each cell in the positional data
+def dictRandomcellColors(nucleus_coordinates):
+    '''
+    This function generate a random color for each cell in the positional data
+    '''
     import numpy as np
     cell_types = nucleus_coordinates["cell_type"][1:]
     type_to_colour_dict = {}
@@ -348,6 +353,9 @@ def dictRandomcellColors(nucleus_coordinates):  # This functions generate a rand
     return type_to_colour_dict
 
 def replace_first_folder(filepath, new_folder):
+    '''
+    This function simply take a path input and replaces the first folder name with another
+    '''
     from pathlib import Path
     # Convert the filepath to a Path object
     path = Path(filepath)
@@ -357,10 +365,16 @@ def replace_first_folder(filepath, new_folder):
     return str(new_path)  # Return as a string if needed
 
 def ensure_directory(directory):
+    '''
+    This function simply makes a folder if it does not already exists at the input path
+    '''
     if not os.path.exists(directory):
         os.makedirs(directory)
 
 def plot_basic_barplot(values, identifiers, title="Basic Bar Plot", xlabel="Identifiers", ylabel="Values", color="skyblue", std_devs=None):
+    '''
+    This function is used to generate a smple barplot, mainly used to compare samples
+    '''
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     if std_devs:
         ax.bar(identifiers, values, yerr=std_devs, capsize=5, color=color, edgecolor='black')
@@ -401,7 +415,7 @@ def generate_barcode_idx_mapping(config, edges_df):
 
 def generate_directory_names(config, usage_flag ="filtering"):
     '''
-    As each set of filtering parameter has an indivudal folder, this functions simply acts as a simple way to get the correct names for findin the relevant files
+    As each set of filtering parameter has an indivudal folder, this functions simply acts as a simple way to get the correct names for finding the relevant files
     '''
     nUMI_thresholds = config.filtering_args.nUMI_sum_per_bead_thresholds
     n_connections_thresholds = config.filtering_args.n_connected_cells_thresholds
@@ -436,6 +450,9 @@ def ensure_subgraph_filtering_directory(config, filter_type="test", threshold=1,
     return config
 
 def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthetic_sequences.csv"):
+    '''
+    This function takes a cell-bead edgelist and converts each barcode to a random synthetic barcode, keeping all properties except the barcodes themselves
+    '''
     import pandas as pd
     import random
 
@@ -472,19 +489,3 @@ def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthe
     # Apply mapping to bead_bc column
     df['bead_bc'] = df['bead_bc'].map(new_barcode_map)
     df.to_csv(f"{destination_name}")
-
-    
-def runFullFilteringAndRawSubgraphPipeline(config):
-    
-    from initial_processing_functions import performPreprocessing
-    performPreprocessing(config)
-    from filtering_functions import performFiltering
-    performFiltering(config)
-    from subgraph_processing_functions import performSubgraphProcessing
-    performSubgraphProcessing(config)
-    from reconstruction_functions import interpretConfigAndReconstruct
-    interpretConfigAndReconstruct(config)
-
-if __name__ =="__main__":
-    config = ConfigLoader('config_real.py')
-    runFullFilteringAndRawSubgraphPipeline(config)
