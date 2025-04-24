@@ -1,4 +1,4 @@
-__More updates coming soon, including input files, bugfixing, figure generation, ease of use, and annotation__
+__More updates coming soon, including biological analysis, input files, bugfixing, figure generation, ease of use, and annotation__
 
 # How to setup the environment and run a first-pass reconstruction
 
