@@ -45,10 +45,15 @@ The "subgraph_modification_functions.py" is not independantly runnable without m
 Biological analysis is run by .qmd R files and a jupyter notebook from the "analysis" subfolder within the "Spatial_biology_analysis_R_squidpy" folder
 
 The input data is currently empty but is publically available as a part of the the original Slide-tags article: https://doi.org/10.1038/s41586-023-06837-4
+
 Non-sequencing Human tonsil data (SCP169)](https://singlecell.broadinstitute.org/single_cell/study/SCP2169/slide-tags-snrna-seq-on-human-tonsil#/)
+
 Mouse data sets are also publically available including sequencing data.
+
 [SCP2162](https://singlecell.broadinstitute.org/single_cell/study/SCP2162/slide-tags-snrna-seq-on-mouse-hippocampus) (Mouse hippocampus) 
+
 [SCP2170](https://singlecell.broadinstitute.org/single_cell/study/SCP2170/slide-tags-snrna-seq-on-mouse-embryonic-e14-brain) (Mouse embryonic brain)
+
 Mouse sequencing data. https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE244355
 
 The R environment can be recreated using "renv", running the slidetags-network.Rproj will activate the inital renv, and subsequently executing the command below will install required packages 
