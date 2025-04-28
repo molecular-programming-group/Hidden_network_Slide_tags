@@ -1,0 +1,1228 @@
+---
+title: "Slide-tags HuTonsil snAnalysis - Part II"
+author: "L. Franzén"
+format: html
+editor: visual
+---
+
+## Information
+
+This script is Part II of II and follows on the output from the Squidpy analysis.
+
+## The data
+
+Using the original published Slide-tags snRNA-seq data for human tonsil.
+
+Publication: Russell, A.J.C., Weir, J.A., Nadaf, N.M. *et al.* Slide-tags enables single-nucleus barcoding for multimodal spatial genomics. *Nature* **625**, 101–109 (2024). https://doi.org/10.1038/s41586-023-06837-4
+
+Data downloaded from here (January 2025): <https://singlecell.broadinstitute.org/single_cell/study/SCP2169/slide-tags-snrna-seq-on-human-tonsil#/>
+
+## Set up
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(paletteer)
+library(pheatmap)
+```
+
+```{r}
+PROJECT_ID <- "tonsil_data"
+DIR_ROOT <- file.path(getwd(), "..")
+DIR_DATA <- file.path(DIR_ROOT, "data", PROJECT_ID)
+DIR_RES <- file.path(DIR_ROOT, "results", PROJECT_ID)
+```
+
+```{r}
+list.files(DIR_RES)
+```
+
+Colors
+
+```{r}
+colors_gt_rc <- setNames(c("#A13E4F", "#6278BB"), nm = c("gt", "rc"))
+```
+
+## Spatial analysis assessment and comparison
+
+Import squidpy analysis results for each subsection.
+
+### Neighborhood enrichment analysis
+
+```{r}
+nb_cells_path <- file.path(DIR_RES, "nhood_cells.csv")
+nb_cells <- read_csv(nb_cells_path,
+                     show_col_types = FALSE, col_names = F) |> pull(X1)
+nb_cells
+```
+
+Define cell type colors
+
+```{r}
+# B-germinal-center:"#7D0025"
+# B-memory:"#DA3500"             
+# B-naive:"#F39300"                 
+# FDC:"#2F327D"                 
+# mDC:"#0074B0"          
+# myeloid:"#00A6BB"                  
+# NK:"#54CABE"                 
+# pDC:"#A9E3C8"              
+# plasma:"#F9D67E"               
+# T-CD4:"#7C378E"
+# T-CD8:"#887CBC"
+# T-double-neg:"#9FB4D6"
+# T-follicular-helper:"#C9E0EB"
+```
+
+```{r}
+cell_colors <- setNames(
+  c("#FB694A", "#CA181D", "#67000E", 
+    "#FFFFE5", "#E5F5AC", "#A1D88A", "#4DB063", "#17793E", "#004528",
+    "#6AAFD6", "#3787C0", "#105BA4", "#08306B"
+    ),
+  nm = sort(gsub("_", "-", nb_cells)))
+
+
+# "#7D0025" "#DA3500" "#F39300" "#F9D67E" "#FFFFC8"
+# "#004533" "#0A764E" "#40A45D" "#85C876" "#C2E2A2" "#EAF5CA" "#FEFEE3"
+# "#2F327D" "#0074B0" "#00A6BB" "#54CABE" "#A9E3C8" "#DDF2DA" "#F5F8EA"
+# "#540046" "#7C378E" "#887CBC" "#9FB4D6" "#C9E0EB" "#F2FBFC"
+
+cell_colors <- setNames(
+  c("#7D0025", "#DA3500", "#F39300", # hcl.colors(5, palette = "YlOrRd")[1:3]
+    "#2F327D", "#0074B0", "#00A6BB", "#54CABE", "#A9E3C8", #"#DDF2DA", # hcl.colors(7, palette = "GnBu")[1:6]
+    "#F9D67E", # plasma | hcl.colors(5, palette = "YlOrRd")[4]
+    "#7C378E", "#887CBC", "#9FB4D6", "#C9E0EB" # hcl.colors(6, palette = "BuPu")[2:5]
+    ),
+  nm = sort(gsub("_", "-", nb_cells)))
+
+# sort(gsub("_", "-", nb_cells))
+```
+
+Read results
+
+```{r}
+nb_orig_gt <- read_csv('/Users/lovisafranzen/Documents/PhD_Projects/slide-tags_hidden-network/slidetags-network/results/tonsil_data/nhood_stats_orig_gt.csv',
+                       col_names = F) |> as.matrix()
+
+nb_orig_rc <- read_csv('/Users/lovisafranzen/Documents/PhD_Projects/slide-tags_hidden-network/slidetags-network/results/tonsil_data/nhood_stats_orig_rc.csv',
+                       col_names = F) |> as.matrix()
+
+nb_orig_rc_morph <- read_csv('/Users/lovisafranzen/Documents/PhD_Projects/slide-tags_hidden-network/slidetags-network/results/tonsil_data/nhood_stats_orig_rc_morph.csv',
+                       col_names = F) |> as.matrix()
+
+nb_new_rc <- read_csv('/Users/lovisafranzen/Documents/PhD_Projects/slide-tags_hidden-network/slidetags-network/results/tonsil_data/nhood_stats_new_rc.csv',
+                       col_names = F) |> as.matrix()
+```
+
+```{r}
+nb_cells_ordered <- c('B_germinal_center', 'B_memory', 'B_naive', 'FDC', 'NK', 'T_CD4', 'T_CD8', 'T_double_neg', 'T_follicular_helper', 'mDC', 'myeloid', 'pDC', 'plasma')
+nb_cells_ordered <- gsub("_", "-", nb_cells_ordered)
+```
+
+Plot heatmaps
+
+```{r}
+n_cells <- length(nb_cells_ordered)
+# ph_group_colors <- list(cell = setNames(paletteer::paletteer_d("ggsci::category20_d3", n = n_cells) |> as.character(), 
+#                                          nm = nb_cells_ordered))
+ph_group_colors <- list(cell = cell_colors[nb_cells_ordered])
+ph_groups <- data.frame(row.names = nb_cells_ordered, cell = nb_cells_ordered)
+```
+
+```{r fig.width=7, fig.height=7}
+plt_nb_orig_gt <- nb_orig_gt
+rownames(plt_nb_orig_gt) <- colnames(plt_nb_orig_gt) <- nb_cells_ordered
+
+paletteLength <- 50
+# myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
+# myColor <- RColorBrewer::brewer.pal(n = paletteLength, name = "RdBu") |> rev()
+myColor <- colorRampPalette(RColorBrewer::brewer.pal(n = 11, name = "RdBu"))(paletteLength) |> rev()
+myBreaks <- c(seq(min(plt_nb_orig_gt), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(plt_nb_orig_gt)/paletteLength, max(plt_nb_orig_gt), length.out=floor(paletteLength/2)))
+
+
+p <- pheatmap(plt_nb_orig_gt, 
+         color = myColor, breaks = myBreaks, 
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         cluster_rows=FALSE, cluster_cols=FALSE,
+         treeheight_row = 10, treeheight_col = 10, 
+         main = "Nbh enrichment | orig-gt",
+         border_color = NA);p
+
+pdf(file = file.path(DIR_RES, "r_nhood_orig_gt_pheatmap.pdf"), width = 7, height = 7)
+print(p)
+dev.off()
+
+
+p2 <- pheatmap(plt_nb_orig_gt, 
+         color = myColor, breaks = myBreaks, 
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         # cluster_rows=FALSE, cluster_cols=FALSE,
+         treeheight_row = 15, treeheight_col = 15, 
+         main = "Nbh enrichment | orig-gt",
+         border_color = NA);p2
+
+pdf(file = file.path(DIR_RES, "r_nhood_orig_gt_pheatmap_tree.pdf"), width = 7, height = 7)
+print(p2)
+dev.off()
+```
+
+```{r fig.width=7, fig.height=7}
+plt_nb_orig_rc <- nb_orig_rc
+rownames(plt_nb_orig_rc) <- colnames(plt_nb_orig_rc) <- nb_cells_ordered
+
+paletteLength <- 50
+myColor <- colorRampPalette(RColorBrewer::brewer.pal(n = 11, name = "RdBu") |> rev())(paletteLength)
+myBreaks <- c(seq(min(plt_nb_orig_rc), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(plt_nb_orig_rc)/paletteLength, max(plt_nb_orig_rc), length.out=floor(paletteLength/2)))
+
+p <- pheatmap(plt_nb_orig_rc, 
+         color = myColor, breaks = myBreaks,
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         cluster_rows=FALSE, cluster_cols=FALSE,
+         treeheight_row = 10, treeheight_col = 10, 
+         main = "Nbh enrichment | orig-rc",
+         border_color = NA);p
+
+pdf(file = file.path(DIR_RES, "r_nhood_orig_rc_pheatmap.pdf"), width = 7, height = 7)
+print(p)
+dev.off()
+
+p2 <- pheatmap(plt_nb_orig_rc, 
+         color = myColor, breaks = myBreaks,
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         # cluster_rows=FALSE, cluster_cols=FALSE,
+         treeheight_row = 15, treeheight_col = 15, 
+         main = "Nbh enrichment | orig-rc",
+         border_color = NA);p2
+
+pdf(file = file.path(DIR_RES, "r_nhood_orig_rc_pheatmap_tree.pdf"), width = 7, height = 7)
+print(p2)
+dev.off()
+```
+
+```{r fig.width=7, fig.height=7}
+plt_nb_new_rc <- nb_new_rc
+rownames(plt_nb_new_rc) <- colnames(plt_nb_new_rc) <- nb_cells_ordered
+
+paletteLength <- 50
+myColor <- colorRampPalette(RColorBrewer::brewer.pal(n = 11, name = "RdBu") |> rev())(paletteLength)
+myBreaks <- c(seq(min(plt_nb_new_rc), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(plt_nb_new_rc)/paletteLength, max(plt_nb_new_rc), length.out=floor(paletteLength/2)))
+
+p <- pheatmap(plt_nb_new_rc, 
+         color = myColor, breaks = myBreaks,
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         cluster_rows=FALSE, cluster_cols=FALSE,
+         # treeheight_row = 10, treeheight_col = 10, 
+         main = "Nbh enrichment | new-rc",
+         border_color = NA);p
+
+pdf(file = file.path(DIR_RES, "r_nhood_new_rc_pheatmap.pdf"), width = 7, height = 7)
+print(p)
+dev.off()
+```
+
+```{r fig.width=7, fig.height=7}
+plt_nb_orig_rc_morph <- nb_orig_rc_morph
+rownames(plt_nb_orig_rc_morph) <- colnames(plt_nb_orig_rc_morph) <- nb_cells_ordered
+
+paletteLength <- 50
+myColor <- colorRampPalette(RColorBrewer::brewer.pal(n = 11, name = "RdBu"))(paletteLength) |> rev()
+myBreaks <- c(seq(min(plt_nb_orig_rc_morph), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(plt_nb_orig_rc_morph)/paletteLength, max(plt_nb_orig_rc_morph), length.out=floor(paletteLength/2)))
+
+p <- pheatmap(plt_nb_orig_rc_morph, 
+         color = myColor, breaks = myBreaks, 
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         cluster_rows=FALSE, cluster_cols=FALSE,
+         treeheight_row = 10, treeheight_col = 10, 
+         main = "Nbh enrichment | orig-rc-morph",
+         border_color = NA);p
+
+pdf(file = file.path(DIR_RES, "r_nhood_orig_rc_morph_pheatmap.pdf"), width = 7, height = 7)
+print(p)
+dev.off()
+```
+
+**Compute differences** - Between gt-pos and recon-pos neighborhood enrichment data.
+
+```{r}
+plt_nb_orig_diff <- abs(plt_nb_orig_gt - plt_nb_orig_rc)
+```
+
+```{r fig.width=6, fig.height=6}
+pheatmap(plt_nb_orig_diff, 
+         color = viridis::viridis(n = 10), 
+         breaks = seq(0, 10, 1),
+         # color = myColor, breaks = myBreaks,
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         cluster_rows=FALSE, cluster_cols=FALSE,
+         # treeheight_row = 10, treeheight_col = 10, 
+         main = "Absolute diff (score)",
+         border_color = NA)
+```
+
+-   Between gt and rc-morph
+
+```{r fig.width=6, fig.height=6}
+plt_nb_orig_morph_diff <- abs(plt_nb_orig_gt - plt_nb_orig_rc_morph)
+
+pheatmap(plt_nb_orig_morph_diff, 
+         color = viridis::viridis(n = 10), 
+         breaks = seq(0, 10, 1),
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         cluster_rows=FALSE, cluster_cols=FALSE,
+         main = "Absolute diff (score)",
+         border_color = NA)
+```
+
+-   Between rc and rc-morph
+
+```{r}
+plt_nb_orig_rc_morph_diff <- abs(plt_nb_orig_rc - plt_nb_orig_rc_morph)
+plt_nb_orig_rc_morph_diff
+```
+
+**Compute differences as a fraction instead**
+
+```{r}
+max_val <- max(plt_nb_orig_gt, plt_nb_orig_rc)
+min_val <- min(plt_nb_orig_gt, plt_nb_orig_rc)
+mag_scale <- max_val + abs(min_val)
+
+plt_nb_orig_diff_scale <- plt_nb_orig_diff / max_val #mag_scale
+```
+
+```{r fig.width=6, fig.height=6}
+break_steps <- 100
+pheatmap(plt_nb_orig_diff_scale, 
+         color = viridis::viridis(n = break_steps),
+         breaks = seq(0, 0.5, .5/break_steps),
+         # color = myColor, breaks = myBreaks,
+         annotation_col = ph_groups, annotation_row = ph_groups, annotation_colors = ph_group_colors, annotation_legend = F,
+         cellwidth = 20, cellheight = 20, 
+         fontsize = 14,
+         cluster_rows=FALSE, cluster_cols=FALSE,
+         # treeheight_row = 10, treeheight_col = 10, 
+         main = "Absolute diff (scaled)",
+         border_color = NA)
+```
+
+Plot differences as column
+
+```{r}
+plt_nb_orig_diff_tbl <- plt_nb_orig_diff |> as.data.frame() |> rownames_to_column("cell1")
+plt_nb_orig_diff_tbl[upper.tri(plt_nb_orig_diff_tbl)] <- NA # set upper half to NA to only look at unidirectional results
+plt_nb_orig_diff_long <- pivot_longer(plt_nb_orig_diff_tbl, cols = -c("cell1"), names_to = "cell2", values_to = "diff")
+plt_nb_orig_diff_long <- plt_nb_orig_diff_long |> filter(!is.na(diff)) # remove NAs
+plt_nb_orig_diff_long$cell_pair <- paste0(plt_nb_orig_diff_long$cell1, "::", plt_nb_orig_diff_long$cell2)
+```
+
+```{r fig.width=5, fig.height=8}
+ggplot(plt_nb_orig_diff_long, aes(x=reorder(cell_pair, diff), y=diff)) +
+  geom_col(width=1) + 
+  ylim(0,5) +
+  labs(y="Absolute difference in enrichment score") +
+  coord_flip() +
+  theme_linedraw() +
+  theme(axis.text.y = element_text(size=7), axis.title.y = element_blank())
+```
+
+### Spatial autocorrelation with Moran's I
+
+```{r}
+morans_orig_gt <- read.csv(file.path(DIR_RES, "moransI_genes_orig_gt_assayData.csv"), header = T)
+morans_orig_rc <- read.csv(file.path(DIR_RES, "moransI_genes_orig_rc_assayData.csv"), header = T)
+morans_orig_rc_morph <- read.csv(file.path(DIR_RES, "moransI_genes_orig_rc_morph_assayData.csv"), header = T)
+morans_new_rc <- read.csv(file.path(DIR_RES, "moransI_genes_new_rc_assayData.csv"), header = T)
+```
+
+```{r}
+rownames(morans_orig_gt) <- morans_orig_gt$X
+rownames(morans_orig_rc) <- morans_orig_rc$X
+rownames(morans_orig_rc_morph) <- morans_orig_rc_morph$X
+```
+
+Compare rc and rc-morph - The same??
+
+```{r}
+morans_orig_rc$I - morans_orig_rc_morph[rownames(morans_orig_rc), "I"]
+```
+
+#### Compare intersect and ranking
+
+```{r}
+morans_orig_gt$rank <- 1:nrow(morans_orig_gt)
+morans_orig_rc$rank <- 1:nrow(morans_orig_rc)
+
+morans_comp <- data.frame(gene_orig_gt = morans_orig_gt$X,
+                          I_orig_gt = morans_orig_gt$I,
+                          rank_orig_gt = morans_orig_gt$rank,
+                          gene_orig_rc = morans_orig_rc$X,
+                          I_orig_rc = morans_orig_rc$I,
+                          rank_orig_rc = morans_orig_rc$rank)
+
+morans_comp$same_rank <- morans_comp$gene_orig_gt == morans_comp$gene_orig_rc
+morans_comp$same_rank_n <- ifelse(morans_comp$same_rank == T, 1, 0)
+```
+
+```{r, fig.width=3.5, fig.height=12}
+top_rank <- 100
+p1 <- ggplot(head(morans_comp, top_rank), aes(x=reorder(rank_orig_gt, -rank_orig_gt), y=same_rank_n, fill=same_rank)) +
+  geom_point(shape=22, size=3) +
+  labs(x="Rank", y="", fill="") +
+  scale_fill_manual(values = c("darkorange","skyblue")) +
+  ylim(-1,2) +
+  coord_flip() +
+  theme_linedraw() +
+  theme(legend.position = "top", 
+        axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(), 
+        panel.grid.minor.x = element_blank()) +
+  guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+
+p2 <- ggplot() +
+  geom_point(data = head(morans_comp, top_rank), aes(x=reorder(rank_orig_gt, -rank_orig_gt), y=I_orig_gt), 
+             shape=21, size=2, fill = "darkorange") +
+  geom_point(data = head(morans_comp, top_rank), aes(x=reorder(rank_orig_gt, -rank_orig_gt), y=I_orig_rc), 
+             shape=21, size=2, fill = "skyblue") +
+  labs(x="", y="Moran's I") +
+  coord_flip() +
+  theme_linedraw() +
+  theme(legend.position = "none", 
+        # axis.text.y = element_blank(), 
+        axis.title.y = element_blank()
+        )
+
+(p1 + p2) & patchwork::plot_layout(widths = c(1,1)) # + plot_spacer() 
+```
+
+#### Compute gene-wise margin of error
+
+...in Moran's I between gt and recon
+
+```{r}
+gene_error <- data.frame(
+  gene = morans_orig_gt$X,
+  I_gt = morans_orig_gt$I,
+  I_rc = morans_orig_rc[morans_orig_gt$X, "I"]
+  ) |> 
+  arrange(gene) |> 
+  mutate(I_error = I_gt - I_rc) |> 
+  mutate(I_error_abs = abs(I_error)) |> 
+  mutate(
+    margin_05 = I_error_abs <= 0.5,
+    margin_01 = I_error_abs <= 0.1,
+    margin_005 = I_error_abs <= 0.05,
+    margin_001 = I_error_abs <= 0.01,
+    margin_0005 = I_error_abs <= 0.005,
+    margin_0001 = I_error_abs <= 0.001)
+gene_error |> head()
+```
+
+```{r}
+gene_error_summary <- data.frame(
+  x = c(0.5, 0.1, 0.05, 0.01, 0.005, 0.001),
+  yes = c(sum(gene_error$margin_05),
+          sum(gene_error$margin_01),
+          sum(gene_error$margin_005),
+          sum(gene_error$margin_001),
+          sum(gene_error$margin_0005),
+          sum(gene_error$margin_0001))
+) |> 
+  mutate(no = 2000 - yes)
+
+gene_error_summary <- pivot_longer(gene_error_summary, cols = c(yes, no), names_to = "same", values_to = "n")
+gene_error_summary
+```
+
+```{r fig.width=4, fig.height=4}
+ggplot(gene_error_summary, aes(x=reorder(as.character(x), -x), y=n, fill=same)) +
+  geom_bar(position="fill", stat="identity") +
+  labs(x="Margin of error", y="Fraction of gene", fill="Similar?") +
+  scale_fill_manual(values = c("darkorange","skyblue")) +
+  theme_linedraw()
+```
+
+#### Figure plot - Top X SVG difference
+
+```{r}
+top_x <- 50
+
+top_svg_gt <- morans_orig_gt |> 
+  head(n=top_x) |> 
+  pull(X)
+```
+
+```{r}
+morans_orig_gt |> arrange(desc(I))
+```
+
+```{r}
+svg_comp <- data.frame(
+  gene = top_svg_gt,
+  gt = morans_orig_gt[top_svg_gt, "I"],
+  rc = morans_orig_rc[top_svg_gt, "I"],
+  rank = morans_orig_gt[top_svg_gt, "rank"]
+  ) |> 
+  mutate(I_diff = gt - rc,
+         I_diff_abs = abs(I_diff),
+         I_diff_pct = (I_diff_abs / gt) * 100,
+         )
+
+svg_comp_long <- pivot_longer(svg_comp, cols = c(gt, rc), names_to = "group", values_to = "I")
+svg_comp_long
+```
+
+```{r fig.width=2.5, fig.height=3.5}
+top_genes_show <- 20
+p_dat <- svg_comp_long |> subset(rank<=top_genes_show)
+p <- ggplot(p_dat, aes(x=reorder(gene, -rank), y=I, fill=group)) +
+  geom_point(shape=21, size=2, alpha=0.8, position = position_dodge(width = 0)) +
+  scale_fill_manual(values = colors_gt_rc) +
+  coord_flip() +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(p_dat$I)+0.05)) +
+  labs(x="", y="Moran's I") +
+  theme_linedraw() +
+  theme(legend.position = "top",
+        panel.grid.major.x = element_blank(), 
+        panel.grid.minor.x = element_blank());p
+
+pdf(file.path(DIR_RES, "r_plots", "morans_I_top20_genes.pdf"), width = 2.5, height = 3.5);p;dev.off()
+```
+
+```{r fig.width=3, fig.height=4}
+top_genes_show <- 30
+p_dat <- svg_comp_long |> subset(rank<=top_genes_show)
+
+p_line <- ggplot(p_dat, aes(x=reorder(rank, -rank), y=I, color=group, group = group)) +
+  # geom_point(shape=21, size=2, alpha=0.8, position = position_dodge(width = 0)) +
+  geom_line(linewidth=1.5, alpha=0.8) +
+  scale_color_manual(values = colors_gt_rc) +
+  coord_flip() +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(p_dat$I)+0.05), position = "right") +
+  # scale_x_continuous(expand = c(0, 0), limits = c(1, top_genes_show) +
+  labs(x="Gene (rank)", y="Moran's I") +
+  theme_linedraw() +
+  theme(legend.position = "right",
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid = element_blank())
+
+p_box <- ggplot(p_dat |> subset(group=="gt"), aes(x="", y = abs(I_diff))) +
+  geom_boxplot(outlier.size = 0.6, fill = "#DFDFDF") +
+  coord_flip() +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 0.1)) +
+  # scale_y_continuous(position = "right") +
+  labs(x="", y="Absolute difference") +
+  theme_linedraw() +
+  theme(panel.grid = element_blank())
+
+# (p_box / p_line) + patchwork::plot_layout(heights = c(1,8))
+
+p <- (p_line / p_box) + patchwork::plot_layout(heights = c(10,1));p
+
+pdf(file.path(DIR_RES, "r_plots", "morans_I_top30_genes_rank_diff.pdf"), width = 3, height = 4);p;dev.off()
+```
+
+Alternative plot, with difference reported as a percentage of gt instead
+
+```{r fig.width=3, fig.height=4}
+p_box2 <- ggplot(p_dat |> subset(group=="gt"), aes(x="", y = I_diff_pct)) +
+  geom_boxplot(outlier.size = 0.6, fill = "#DFDFDF") +
+  coord_flip() +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 12)) +
+  # scale_y_continuous(position = "right") +
+  labs(x="", y="% difference") +
+  theme_linedraw() +
+  theme(panel.grid = element_blank())
+
+
+p2 <- (p_line / p_box2) + patchwork::plot_layout(heights = c(10,1));p2
+
+pdf(file.path(DIR_RES, "r_plots", "morans_I_top30_genes_rank_diff_pct.pdf"), width = 3, height = 4);p2;dev.off()
+
+```
+
+Plot with gene names as well
+
+```{r}
+p_dat2 <- p_dat
+p_dat2$rank_gene <- paste0(p_dat2$gene, " (", p_dat2$rank, ")")
+
+p_line2 <- ggplot(p_dat2, aes(x=reorder(rank_gene, -rank), y=I, color=group, group = group)) +
+  geom_line(linewidth=1.5, alpha=0.8) +
+  scale_color_manual(values = colors_gt_rc) +
+  coord_flip() +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(p_dat$I)+0.05), position = "right") +
+  labs(x="Gene (rank)", y="Moran's I") +
+  theme_linedraw() +
+  theme(legend.position = "right",
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid = element_blank())
+```
+
+```{r fig.width=3.5, fig.height=4}
+p3 <- (p_line2 / p_box2) + patchwork::plot_layout(heights = c(10,1));p3
+
+pdf(file.path(DIR_RES, "r_plots", "morans_I_top30_genes_rank_diff_pct_v2.pdf"), width = 3.5, height = 4);p2;dev.off()
+```
+
+### Cell type co-localization
+
+Read results.
+
+```{r}
+occ_orig_gt <- read.csv(file.path(DIR_RES, "co_occurrence_stats_orig_gt.csv"))
+occ_orig_rc <- read.csv(file.path(DIR_RES, "co_occurrence_stats_orig_rc.csv"))
+```
+
+```{r}
+occ_orig_gt$node_type <- gsub("_", "-", occ_orig_gt$node_type)
+occ_orig_gt$origin <- gsub("_", "-", occ_orig_gt$origin)
+
+occ_orig_rc$node_type <- gsub("_", "-", occ_orig_rc$node_type)
+occ_orig_rc$origin <- gsub("_", "-", occ_orig_rc$origin)
+```
+
+```{r}
+unique(occ_orig_rc$origin)
+```
+
+```{r fig.width=6, fig.height=3}
+# cell_select <- "B-germinal-center"
+cell_select_multi <- c("B-germinal-center", "T-CD4")
+
+txt_size <- 11
+dist_lims <- c(100, 1200)
+custom_theme <- theme_linedraw() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid = element_blank(),
+        text = element_text(size=txt_size), 
+        axis.title = element_text(size=txt_size),
+        axis.text = element_text(size=txt_size),
+        # axis.title.x = element_blank(),
+        legend.text = element_text(size=txt_size),
+        legend.position = "none")
+
+pdf(file.path(DIR_RES, "r_plots", "cooccurence_orig_gt_rc_selected_cells.pdf"), width = 6, height = 3)
+for(cell_select in cell_select_multi){
+  message(cell_select)
+  pdat_gt <- subset(occ_orig_gt, origin==cell_select & distance > dist_lims[1] & distance < dist_lims[2])
+  pdat_rc <- subset(occ_orig_rc, origin==cell_select & distance > dist_lims[1] & distance < dist_lims[2])
+  
+  p1 <- ggplot(pdat_gt,
+               aes(x=distance, y=probability, color=node_type, group=node_type)) +
+    geom_line(linewidth=1.5, alpha=0.6) +
+    scale_color_manual(values=cell_colors) +
+    labs(title="Ground-truth") +
+    # scale_x_continuous(expand = c(0, 0), limits = c(dist_lims[1],dist_lims[2])) +
+    custom_theme
+  
+  p2 <- ggplot(pdat_rc,
+               aes(x=distance, y=probability, color=node_type, group=node_type)) +
+    geom_line(linewidth=1.5, alpha=0.6) +
+    scale_color_manual(values=cell_colors) +
+    labs(title="Reconstructed") +
+    # scale_x_continuous(expand = c(0, 0), limits = c(dist_lims[1],dist_lims[2])) +
+    custom_theme
+  
+  print(
+    (p1|p2) & 
+      plot_annotation(title = cell_select) & 
+      theme(plot.title = element_text(hjust = 0.5))
+    )
+}
+print(p2&theme(legend.position = "right"))
+dev.off()
+```
+
+### Ripley's L
+
+```{r}
+ripley_orig_gt <- read.csv(file.path(DIR_RES, "ripley_stats_orig_gt.csv"), row.names = 1) |> remove_rownames()
+ripley_orig_rc <- read.csv(file.path(DIR_RES, "ripley_stats_orig_rc.csv"), row.names = 1) |> remove_rownames()
+
+ripley_orig_gt$node_type <- gsub("_", "-", ripley_orig_gt$node_type)
+ripley_orig_rc$node_type <- gsub("_", "-", ripley_orig_rc$node_type)
+```
+
+```{r fig.width=6.6, fig.height=2.5}
+bin_lims <- c(0, 2000)
+txt_size <- 11
+custom_theme <- theme_linedraw() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid = element_blank(),
+        text = element_text(size=txt_size), 
+        axis.title = element_text(size=txt_size),
+        axis.text = element_text(size=txt_size),
+        # axis.title.x = element_blank(),
+        legend.text = element_text(size=txt_size),
+        legend.position = "none",
+        plot.title = element_text(hjust=0.5))
+
+p1 <- ggplot(ripley_orig_gt,
+             aes(x=bins, y=stats, color=node_type, group=node_type)) +
+    geom_line(linewidth=1.5, alpha=0.6) +
+    scale_color_manual(values=cell_colors) +
+    labs(title="Ground-truth") +
+    scale_x_continuous(expand = c(0, 0), limits = c(bin_lims[1],bin_lims[2])) +
+    custom_theme
+  
+p2 <- ggplot(ripley_orig_rc,
+               aes(x=bins, y=stats, color=node_type, group=node_type)) +
+    geom_line(linewidth=1.5, alpha=0.6) +
+    scale_color_manual(values=cell_colors) +
+    labs(title="Reconstructed") +
+    scale_x_continuous(expand = c(0, 0), limits = c(bin_lims[1],bin_lims[2])) +
+    custom_theme
+
+p1|p2
+
+pdf(file.path(DIR_RES, "r_plots", "ripley_L_orig_gt_rc.pdf"), width = 6.5, height = 2.5)
+p1|p2
+dev.off()
+```
+
+Compute metric for better comparison
+
+-   Area under the curve
+
+```{r}
+# install.packages('DescTools')
+library("DescTools")
+```
+
+```{r}
+cells_test <- ripley_orig_gt$node_type |> unique()
+
+ripley_auc_stats <- data.frame(
+  row.names = cells_test,
+  cell_type = cells_test,
+  auc_gt = rep(0, length(cells_test)),
+  auc_rc = rep(0, length(cells_test))
+)
+for(c in cells_test){
+  dat_gt <- subset(ripley_orig_gt, node_type == c)
+  dat_rc <- subset(ripley_orig_rc, node_type == c)
+  ripley_auc_stats[c, "auc_gt"] <- AUC(x = dat_gt$bins, y = dat_gt$stats) / 10000
+  ripley_auc_stats[c, "auc_rc"] <- AUC(x = dat_rc$bins, y = dat_rc$stats) / 10000
+}
+
+ripley_auc_stats <- ripley_auc_stats |> 
+  arrange(desc(auc_gt)) |> 
+  mutate(rank_gt = 1:nrow(ripley_auc_stats)) |> 
+  arrange(desc(auc_rc)) |> 
+  mutate(rank_rc = 1:nrow(ripley_auc_stats),
+         auc_diff = auc_gt - auc_rc,
+         auc_diff_abs = abs(auc_gt - auc_rc),
+         auc_diff_pct = (auc_diff_abs / auc_gt)*100)
+
+ripley_auc_stats$cell_type <- factor(ripley_auc_stats$cell_type, levels = ripley_auc_stats$cell_type)
+
+ripley_auc_stats
+```
+
+```{r}
+ripley_auc_stats_long <- pivot_longer(ripley_auc_stats, cols = c("auc_gt", "auc_rc"), values_to = "auc", names_to = "group")
+ripley_auc_stats_long$group <- gsub("auc_", "", ripley_auc_stats_long$group)
+```
+
+```{r fig.width=6, fig.height=3}
+lim_max <- ripley_auc_stats_long$auc |> max() |> round() + 2 # 10000
+txt_size <- 11
+custom_theme <- theme_linedraw() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid = element_blank(),
+        text = element_text(size=txt_size), 
+        axis.title = element_text(size=txt_size),
+        axis.text = element_text(size=txt_size),
+        axis.text.x = element_text(angle=45, hjust=1),
+        # axis.title.x = element_blank(),
+        legend.text = element_text(size=txt_size),
+        legend.position = "bottom",
+        plot.title = element_text(hjust=0.5))
+
+p_bar <- ggplot() +
+  geom_col(data = ripley_auc_stats_long, 
+           aes(x=cell_type, y=auc, fill=group),
+           position = "dodge", alpha=0.8) +
+  labs(x="", y="Ripley's L\nAUC (10^4)") +
+  scale_fill_manual(values = colors_gt_rc) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, lim_max)) +
+  custom_theme
+
+p_box <- ggplot(ripley_auc_stats, aes(x="", y = abs(auc_diff_pct))) +
+  geom_boxplot(outlier.size = 0.6, fill = "#DFDFDF") +
+  labs(x="", y="Diff. (%)") +
+  theme_linedraw() +
+  theme(panel.grid = element_blank())
+
+(p_bar | p_box) & plot_layout(width=c(9,1))
+
+pdf(file.path(DIR_RES, "r_plots", "ripley_L_orig_gt_rc_diff.pdf"), width = 6, height = 3)
+(p_bar | p_box) & plot_layout(width=c(9,1))
+dev.off()
+```
+
+```{r}
+((p1|p2) / ((p_bar | p_box) & plot_layout(width=c(9,1))))
+```
+
+### LIANA L-R analysis
+
+```{r}
+liana_rl_gt <- read.csv(file.path(DIR_RES, "liana_bivariate_lrres_orig_gt_assayData.csv"))
+liana_rl_rc <- read.csv(file.path(DIR_RES, "liana_bivariate_lrres_orig_rc_assayData.csv"))
+
+liana_rl_gt
+liana_rl_rc
+```
+
+```{r}
+liana_rl_comparison <- data.frame(liana_rl_gt[, c(1, 4, 6)],
+                                  morans_gt = liana_rl_gt$morans,
+                                  morans_rc = liana_rl_rc$morans,
+                                  mean_gt = liana_rl_gt$mean,
+                                  mean_rc = liana_rl_rc$mean)
+liana_rl_comparison$morans_diff <- liana_rl_comparison$morans_gt - liana_rl_comparison$morans_rc
+liana_rl_comparison$mean_diff <- liana_rl_comparison$mean_gt - liana_rl_comparison$mean_rc
+
+liana_rl_comparison
+```
+
+## Extra Figure Plots
+
+Read Seurat/metadata objects for making new spatial plots.
+
+```{r}
+mdat_tonsil_orig <- read.csv(file.path(DIR_RES, "se_tonsil_orig_metadata.csv"), row.names = 1)
+mdat_tonsil_new <- read.csv(file.path(DIR_RES, "se_tonsil_new_filt_metadata.csv"), row.names = 1)
+```
+
+```{r}
+mdat_tonsil_orig$cell_type2 <- gsub("_", "-", mdat_tonsil_orig$cell_type)
+
+# cell_colors <- setNames(
+#   c("#7D0025", "#DA3500", "#F39300", # hcl.colors(5, palette = "YlOrRd")[1:3]
+#     "#2F327D", "#0074B0", "#00A6BB", "#54CABE", "#A9E3C8", #"#DDF2DA", # hcl.colors(7, palette = "GnBu")[1:6]
+#     "#F9D67E", # plasma | hcl.colors(5, palette = "YlOrRd")[4]
+#     "#7C378E", "#887CBC", "#9FB4D6", "#C9E0EB" # hcl.colors(6, palette = "BuPu")[2:5]
+#     ),
+#   nm = sort(gsub("_", "-", nb_cells)))
+```
+
+### Spatial - Ground-truth vs Recon, selected cell combinations
+
+```{r}
+SpatialPlotCells <- function(
+    mdat,
+    p1_coords = c("x", "y"),
+    p2_coords = c("x", "y"),
+    fill_by = "cell_type",
+    cell_colors,
+    pt_size = 1.5,
+    pt_stroke = NA,
+    pt_alpha = 1
+) {
+  
+  p1 <- ggplot(mdat, 
+               aes_string(x=p1_coords[1], y=p1_coords[2], fill = fill_by)) +
+    geom_point(shape=21, size=pt_size, stroke=pt_stroke, alpha=pt_alpha) +
+    scale_fill_manual(values = cell_colors) +
+    labs(fill="", title="Ground-truth") +
+    theme_void() +
+    theme(aspect.ratio = 1, legend.position = "none", plot.title = element_text(hjust=0.5))
+
+  p2 <- ggplot(mdat, 
+               aes_string(x=p2_coords[1], y=p2_coords[2], fill = fill_by)) +
+    geom_point(shape=21, size=pt_size, stroke=pt_stroke, alpha=pt_alpha) +
+    scale_fill_manual(values = cell_colors) +
+    labs(fill="", title="Reconstructed") +
+    theme_void() +
+    theme(aspect.ratio = 1, legend.position = "right", plot.title = element_text(hjust=0.5)) +
+    guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+  
+  return(p1 | p2)
+}
+```
+
+```{r fig.width=10, fig.height=5}
+# p1 <- ggplot(mdat_tonsil_orig, aes(x=spatial_x, y=spatial_y, fill=cell_type2)) +
+#   geom_point(shape=21, size=2) +
+#   scale_fill_manual(values = cell_colors) +
+#   labs(fill="", title="Ground-truth") +
+#   theme_void() +
+#   theme(aspect.ratio = 1, legend.position = "none", plot.title = element_text(hjust=0.5))
+# 
+# p2 <- ggplot(mdat_tonsil_orig, aes(x=morph_recon_x_1, y=morph_recon_y_1, fill=cell_type2)) +
+#   geom_point(shape=21, size=2) +
+#   scale_fill_manual(values = cell_colors) +
+#   labs(fill="", title="Reconstructed") +
+#   theme_void() +
+#   theme(aspect.ratio = 1, legend.position = "right", plot.title = element_text(hjust=0.5)) +
+#   guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+# 
+# p1 | p2
+```
+
+```{r fig.width=8, fig.height=4}
+p <- SpatialPlotCells(mdat = mdat_tonsil_orig, 
+                 p1_coords = c("spatial_x", "spatial_y"),
+                 p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                 fill_by = "cell_type2",
+                 cell_colors = cell_colors);p
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_cells_all.pdf"), width = 8, height = 4);p;dev.off()
+```
+
+```{r fig.width=8, fig.height=4}
+cells_select <- c("B-germinal-center", "B-naive")
+cell_colors_mod <- cell_colors
+cell_colors_mod[!names(cell_colors) %in% cells_select] <- "NA"
+
+p <- SpatialPlotCells(mdat = mdat_tonsil_orig, 
+                 p1_coords = c("spatial_x", "spatial_y"),
+                 p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                 fill_by = "cell_type2",
+                 cell_colors = cell_colors_mod);p
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_cells_B-gc_B-naive.pdf"), width = 8, height = 4);p;dev.off()
+```
+
+```{r fig.width=8, fig.height=4}
+cells_select <- c("B-memory", "B-naive")
+cell_colors_mod <- cell_colors
+cell_colors_mod[!names(cell_colors) %in% cells_select] <- "NA"
+
+p <- SpatialPlotCells(mdat = mdat_tonsil_orig, 
+                 p1_coords = c("spatial_x", "spatial_y"),
+                 p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                 fill_by = "cell_type2",
+                 cell_colors = cell_colors_mod);p
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_cells_B-mem_B-naive.pdf"), width = 8, height = 4);p;dev.off()
+```
+
+```{r fig.width=8, fig.height=4}
+cells_select <- c("T-CD4", "B-germinal-center")
+cell_colors_mod <- cell_colors
+cell_colors_mod[!names(cell_colors) %in% cells_select] <- "NA"
+
+p <- SpatialPlotCells(mdat = mdat_tonsil_orig, 
+                 p1_coords = c("spatial_x", "spatial_y"),
+                 p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                 fill_by = "cell_type2",
+                 cell_colors = cell_colors_mod);p
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_cells_B-gc_T-CD4.pdf"), width = 8, height = 4);p;dev.off()
+```
+
+```{r fig.width=8, fig.height=4}
+cells_select <- c("T-CD4", "mDC")
+cell_colors_mod <- cell_colors
+cell_colors_mod[!names(cell_colors) %in% cells_select] <- "NA"
+
+p <- SpatialPlotCells(mdat = mdat_tonsil_orig, 
+                 p1_coords = c("spatial_x", "spatial_y"),
+                 p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                 fill_by = "cell_type2",
+                 cell_colors = cell_colors_mod);p
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_cells_T-CD4_mDC.pdf"), width = 8, height = 4);p;dev.off()
+```
+
+```{r fig.width=8, fig.height=4}
+cells_select <- c("B-germinal-center", "T-follicular-helper")
+# cells_select <- c("B-germinal-center", "plasma")
+
+cell_colors_mod <- cell_colors
+cell_colors_mod[!names(cell_colors) %in% cells_select] <- "NA"
+
+p <- SpatialPlotCells(mdat = mdat_tonsil_orig, 
+                 p1_coords = c("spatial_x", "spatial_y"),
+                 p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                 fill_by = "cell_type2",
+                 cell_colors = cell_colors_mod);p
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_cells_B-gc_T-fh.pdf"), width = 8, height = 4);p;dev.off()
+```
+
+```{r fig.width=8, fig.height=4}
+cells_select <- c("NK", "T-CD4")
+
+cell_colors_mod <- cell_colors
+cell_colors_mod[!names(cell_colors) %in% cells_select] <- "NA"
+
+p <- SpatialPlotCells(mdat = mdat_tonsil_orig, 
+                 p1_coords = c("spatial_x", "spatial_y"),
+                 p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                 fill_by = "cell_type2",
+                 cell_colors = cell_colors_mod);p
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_cells_T-CD4_NK.pdf"), width = 8, height = 4);p;dev.off()
+```
+
+### Spatial - Gt vs rc new cells
+
+```{r}
+mdat_tonsil_new$cell_type2 <- gsub("_", "-", mdat_tonsil_new$predicted.id)
+```
+
+```{r}
+mdat_tonsil_orig$new_cell <- "Original"
+mdat_tonsil_new$new_cell <- "New"
+cols_keep <- intersect(colnames(mdat_tonsil_orig), colnames(mdat_tonsil_new))
+mdat_tonsil_orig_new <- rbind(mdat_tonsil_orig[,cols_keep], mdat_tonsil_new[,cols_keep])
+```
+
+```{r}
+cell_group_colors <- setNames(c("grey80", "#F39300"), nm = c("Original", "New"))
+```
+
+```{r}
+SpatialPlotNewCells <- function(
+    p1_mdat,
+    p2_mdat,
+    p1_coords = c("x", "y"),
+    p2_coords = c("x", "y"),
+    fill_by = "cell_type",
+    p1_cell_colors,
+    p2_cell_colors,
+    pt_size = 1.5,
+    pt_stroke = NA,
+    pt_alpha = 1
+) {
+  
+  p1 <- ggplot(p1_mdat, 
+               aes_string(x=p1_coords[1], y=p1_coords[2], fill = fill_by)) +
+    geom_point(shape=21, size=pt_size, stroke=pt_stroke, alpha=pt_alpha) +
+    scale_fill_manual(values = p1_cell_colors) +
+    labs(fill="", title="Ground-truth") +
+    theme_void() +
+    theme(aspect.ratio = 1, legend.position = "none", plot.title = element_text(hjust=0.5))
+
+  p2 <- ggplot(p2_mdat, 
+               aes_string(x=p2_coords[1], y=p2_coords[2], fill = fill_by)) +
+    geom_point(shape=21, size=pt_size, stroke=pt_stroke, alpha=pt_alpha) +
+    scale_fill_manual(values = p2_cell_colors) +
+    labs(fill="", title="Reconstructed") +
+    theme_void() +
+    theme(aspect.ratio = 1, legend.position = "right", plot.title = element_text(hjust=0.5)) +
+    guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+  
+  return(p1 | p2)
+}
+```
+
+```{r fig.width=5.5, fig.height=3}
+cell_select <- "B-naive"
+cell_group_colors_mod <- cell_group_colors
+cell_group_colors_mod["New"] <- cell_colors[cell_select]
+
+SpatialPlotNewCells(p1_mdat = subset(mdat_tonsil_orig, cell_type2 == cell_select),
+                    p1_coords = c("spatial_x", "spatial_y"),
+                    p1_cell_colors = cell_group_colors_mod["Original"],
+                    p2_mdat = subset(mdat_tonsil_orig_new, cell_type2 == cell_select),
+                    p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                    p2_cell_colors = cell_group_colors_mod,
+                    pt_size = 1.7,
+                    fill_by = "new_cell") &
+  plot_annotation(title = cell_select) & 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r fig.width=5.5, fig.height=3}
+cell_select_multiple <- c("B-germinal-center", "B-memory", "B-naive", "myeloid", "T-CD4", "NK", "mDC")
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_new_cells_selected.pdf"), width = 5.5, height = 3)
+for (c in cell_select_multiple) {
+  cell_select <- c
+  cell_group_colors_mod <- cell_group_colors
+  cell_group_colors_mod["New"] <- cell_colors[cell_select]
+  
+  print(
+      SpatialPlotNewCells(p1_mdat = subset(mdat_tonsil_orig, cell_type2 == cell_select),
+                      p1_coords = c("spatial_x", "spatial_y"),
+                      p1_cell_colors = cell_group_colors_mod["Original"],
+                      p2_mdat = subset(mdat_tonsil_orig_new, cell_type2 == cell_select),
+                      p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                      p2_cell_colors = cell_group_colors_mod,
+                      pt_size = 1.7,
+                      fill_by = "new_cell") &
+    plot_annotation(title = cell_select) & 
+    theme(plot.title = element_text(hjust = 0.5))
+  )
+}
+dev.off()
+```
+
+```{r fig.width=5.5, fig.height=3}
+cell_select_all <- names(cell_colors)
+
+pdf(file.path(DIR_RES, "r_plots", "spatial_gt_recon_new_cells_all.pdf"), width = 5.5, height = 3)
+for (c in cell_select_all) {
+  cell_select <- c
+  cell_group_colors_mod <- cell_group_colors
+  cell_group_colors_mod["New"] <- cell_colors[cell_select]
+  
+  print(
+      SpatialPlotNewCells(p1_mdat = subset(mdat_tonsil_orig, cell_type2 == cell_select),
+                      p1_coords = c("spatial_x", "spatial_y"),
+                      p1_cell_colors = cell_group_colors_mod["Original"],
+                      p2_mdat = subset(mdat_tonsil_orig_new, cell_type2 == cell_select),
+                      p2_coords = c("morph_recon_x_1", "morph_recon_y_1"),
+                      p2_cell_colors = cell_group_colors_mod,
+                      pt_size = 1.7,
+                      fill_by = "new_cell") &
+    plot_annotation(title = cell_select) & 
+    theme(plot.title = element_text(hjust = 0.5))
+  )
+}
+dev.off()
+```
+
+### Network quality metrics with/without new cells
+
+Data (from Simon, 2025-03-05)
+
+```{r}
+quality_dat <- data.frame(
+  group = c("Original", "All"),
+  CPD = c(0.47273238379721577, 0.758313632773214),
+  CPD_std = c(0.07346940848219984, 0.04141196089509717),
+  Knn = c(0.28781951416536844, 0.34682361087069413),
+  Knn_std = c(0.005892314031309729, 0.004313264895949371)
+)
+quality_dat$group <- factor(quality_dat$group, levels = c("Original", "All"))
+```
+
+```{r fig.width=4, fig.height=3}
+colors_groups <- c("#97a6d2", "#3f5391")
+txt_size <- 11
+custom_theme <- theme_linedraw() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid = element_blank(),
+        text = element_text(size=txt_size), 
+        axis.title = element_text(size=txt_size),
+        axis.text = element_text(size=txt_size),
+        axis.title.x = element_blank(),
+        legend.text = element_text(size=txt_size),
+        legend.position = "none")
+
+p1 <- ggplot() +
+  geom_col(data = quality_dat, aes(x=group, y=CPD, fill=group),
+           position = "dodge") +
+  geom_errorbar(data = quality_dat, aes(x=group, ymin = CPD+CPD_std, ymax = CPD-CPD_std), 
+                width = 0.3, linewidth=0.25) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,0.85)) +
+  scale_fill_manual(values = colors_groups) +
+  custom_theme
+
+p2 <- ggplot() +
+  geom_col(data = quality_dat, aes(x=group, y=Knn, fill=group),
+           position = "dodge") +
+  geom_errorbar(data = quality_dat, aes(x=group, ymin = Knn+Knn_std, ymax = Knn-Knn_std), 
+                width = 0.3, linewidth=0.25) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,0.4)) +
+  scale_fill_manual(values = colors_groups) +
+  custom_theme
+
+p1|p2
+
+pdf(file.path(DIR_RES, "r_plots", "network_quality_stats_original_vs_all_cells.pdf"), width = 4, height = 3)
+p1|p2
+dev.off()
+```
+
+### New cell stats
+
+Plot barcharts showing new cells added
+
+```{r}
+mdat_tonsil_orig$group <- "Original"
+mdat_tonsil_new$group <- "New"
+
+mdat_tonsil_orig$cell_type2 <- gsub("_", "-", mdat_tonsil_orig$cell_type)
+mdat_tonsil_new$cell_type2 <- gsub("_", "-", mdat_tonsil_new$predicted.id)
+
+cols_keep <- intersect(colnames(mdat_tonsil_orig),
+                       colnames(mdat_tonsil_new))
+
+mdat_tonsil_all <- rbind(mdat_tonsil_orig[,cols_keep], mdat_tonsil_new[,cols_keep])
+```
+
+```{r}
+total_cells <- mdat_tonsil_all |> 
+  group_by(group) |> 
+  summarise(total_n_cells = n())
+
+cell_summary <- mdat_tonsil_all |> 
+  group_by(cell_type2, group) |> 
+  summarise(n = n())
+cell_summary <- merge(cell_summary, total_cells) |> 
+  mutate(n_freq = n / total_n_cells) |> 
+  arrange(cell_type2)
+
+cell_summary$group <- factor(cell_summary$group, levels = c("New", "Original"))
+cell_summary
+```
+
+```{r fig.width=4, fig.height=3}
+# colors_groups <- c("#97a6d2", "#3f5391")
+colors_groups <- c("#3f5391", "grey75")
+txt_size <- 11
+custom_theme <- theme_linedraw() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid = element_blank(),
+        text = element_text(size=txt_size), 
+        axis.title = element_text(size=txt_size),
+        axis.text = element_text(size=txt_size),
+        # axis.title.x = element_blank(),
+        legend.text = element_text(size=txt_size),
+        legend.position = "right")
+
+p <- ggplot(cell_summary, aes(x=reorder(cell_type2, desc(cell_type2)), y=n_freq, fill=group)) +
+  geom_col(position = "dodge", width = 0.7) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,0.4)) +
+  labs(y="Frequency (n/total cells)", x="") +
+  coord_flip() +
+  scale_fill_manual(values = colors_groups) +
+  custom_theme;p
+
+pdf(file.path(DIR_RES, "r_plots", "new_cells_frequency_bars.pdf"), 
+    width = 4, height = 3)
+p
+dev.off()
+```
+
+## SessionInfo
+
+```{r}
+sessionInfo()
+```

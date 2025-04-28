@@ -1,0 +1,4 @@
+"0","dir.create(DIR_RES, recursive = TRUE, showWarnings = FALSE)
+"
+"2","Error: object 'DIR_RES' not found
+"

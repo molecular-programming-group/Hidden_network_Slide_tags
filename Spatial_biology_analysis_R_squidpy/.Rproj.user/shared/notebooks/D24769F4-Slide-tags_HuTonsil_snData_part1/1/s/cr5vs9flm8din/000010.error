@@ -1,0 +1,1 @@
+{"frames":[{"func":"dir.create(DIR_RES, recursive = TRUE, showWarnings = FALSE)","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error: object 'DIR_RES' not found\n"}

@@ -1,0 +1,17 @@
+name: squidpy
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - jupyter
+  - numpy=1.26.4
+  - spatialdata
+  - spatialdata-io
+  - spatialdata-plot 
+  - napari-spatialdata
+  - lapack
+  - scipy
+  - pip
+  - pip:
+      - spatialdata>=0.2.5
+      - squidpy>=1.1.0

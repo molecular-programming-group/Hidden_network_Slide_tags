@@ -1,0 +1,980 @@
+---
+title: "Slide-tags HuTonsil snAnalysis - Part I"
+author: "L. Franzén"
+format: html
+editor: visual
+---
+
+## Information
+
+This script is Part I of II and covers the initiation of the spatial object and export to h5 format for Squidpy analysis.
+
+## The data
+
+Using the original published Slide-tags snRNA-seq data for human tonsil.
+
+Publication: Russell, A.J.C., Weir, J.A., Nadaf, N.M. *et al.* Slide-tags enables single-nucleus barcoding for multimodal spatial genomics. *Nature* **625**, 101–109 (2024). https://doi.org/10.1038/s41586-023-06837-4
+
+Data downloaded from here (January 2025): <https://singlecell.broadinstitute.org/single_cell/study/SCP2169/slide-tags-snrna-seq-on-human-tonsil#/>
+
+## Set up
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(paletteer)
+```
+
+```{r}
+PROJECT_ID <- "tonsil_data"
+DIR_ROOT <- file.path(getwd(), "..")
+DIR_DATA <- file.path(DIR_ROOT, "data", PROJECT_ID)
+DIR_RES <- file.path(DIR_ROOT, "results", PROJECT_ID)
+```
+
+```{r}
+list.files(DIR_DATA)
+```
+
+## Read Slide-tags data
+
+```{r}
+tonsil_data <- Read10X(file.path(DIR_DATA, "expression"))
+se_tonsil <- CreateSeuratObject(tonsil_data)
+```
+
+```{r}
+tonsil_mdat_clusters <- read.csv(file.path(DIR_DATA, "cluster", "HumanTonsil_cluster.csv"), 
+                                 header = T) |> 
+  filter(!row_number() %in% c(1)) |> 
+  mutate(across(c(2:3), ~ as.numeric(.)))
+
+tonsil_mdat_spatial <- read.csv(file.path(DIR_DATA, "cluster", "HumanTonsil_spatial.csv"), 
+                                 header = T) |> 
+  filter(!row_number() %in% c(1)) |> 
+  mutate(across(c(2:3), ~ as.numeric(.)))
+```
+
+```{r}
+dim(tonsil_mdat_clusters)
+dim(tonsil_mdat_spatial)
+```
+
+```{r}
+colnames(tonsil_mdat_clusters) <- c("barcode", "UMAP_1", "UMAP_2", "cell_type")
+colnames(tonsil_mdat_spatial) <- c("barcode", "spatial_x", "spatial_y", "cell_type")
+```
+
+```{r}
+tonsil_mdat <- merge(tonsil_mdat_clusters, tonsil_mdat_spatial[, 1:3], by = "barcode")
+rownames(tonsil_mdat) <- tonsil_mdat$barcode
+head(tonsil_mdat)
+```
+
+```{r fig.width=16, fig.height=6}
+ggplot(tonsil_mdat, aes(x=UMAP_1, y=UMAP_2, fill=cell_type)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  theme(aspect.ratio = 1) |
+  ggplot(tonsil_mdat, aes(x=spatial_x, y=spatial_y, fill=cell_type)) +
+    geom_point(shape=21) & 
+    scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+    theme(aspect.ratio = 1)
+```
+
+```{r}
+se_tonsil <- AddMetaData(se_tonsil, metadata = tonsil_mdat)
+```
+
+```{r fig.width=10, fig.height=6}
+VlnPlot(se_tonsil, features = c("nCount_RNA", "nFeature_RNA"), group.by = "cell_type")
+```
+
+## Read reconstructed data
+
+```{r}
+# tonsil_recon <- read.csv(file.path(DIR_DATA, "reconstructed",
+#                                    "full_reconstruction_summary.csv")) |> 
+#   filter(!node_type == "bead") |> 
+#   select(!node_ID)
+
+# tonsil_recon <- read.csv(file.path(DIR_DATA, "reconstructed", "full_reconstruction_summary_subgraph_1_N=93859_gated_999_align.csv")) |>
+#   filter(!node_type == "bead") |> 
+#   select(!node_ID)
+
+# NEW: 4/3-2025
+tonsil_recon <- read.csv(file.path(DIR_DATA, "reconstructed",
+                                   "full_reconstruction_summary_subgraph_1_N=93859_dbscan_ms=12_eps=5_pseudo=False.csv")) |>
+  filter(!node_type == "bead") |> 
+  select(!node_ID)
+
+rownames(tonsil_recon) <- paste0(tonsil_recon$node_bc, "-1")
+
+dim(tonsil_recon); head(tonsil_recon)
+```
+
+```{r}
+# NEW 25/2-2025: Alpha-morphed coordinates
+# tonsil_recon_morph <- read.csv(file.path(DIR_DATA, "reconstructed",
+#                                          "full_reconstruction_summary_subgraph_1_N=93859_dbscan_ms=12_eps=5_pseudo=False.csv")) |> 
+#   filter(!node_type == "bead") |> 
+#   select(!node_ID)
+
+# NEW 4/3-2025: Adjusted alpha-morphed coordinates
+tonsil_recon_morph <- read.csv(file.path(DIR_DATA, "reconstructed",
+                                         "full_reconstruction_summary_subgraph_1_N=93859_dbscan_ms=12_eps=5_pseudo=False.csv")) |> 
+  filter(!node_type == "bead") |> 
+  select(!node_ID)
+
+rownames(tonsil_recon_morph) <- paste0(tonsil_recon_morph$node_bc, "-1")
+```
+
+Plot
+
+```{r fig.width=10, fig.height=6}
+# ggplot(tonsil_recon, aes(x=gt_x, y=gt_y, fill=cell_type)) +
+#     geom_point(shape=21) & 
+#     scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+#     labs(title = "Ground truth") &
+#     theme(aspect.ratio = 1, legend.position = "none") |
+ggplot(subset(tonsil_recon, node_type != "tonsil"), aes(x=recon_x_1, y=recon_y_1, fill=node_type)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "Recon. 1") &
+  theme(aspect.ratio = 1, legend.position = "none") |
+  ggplot(tonsil_recon, aes(x=align_recon_x_1, y=align_recon_y_1, fill=node_type)) +
+    geom_point(shape=21) & 
+    scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+    labs(title = "Align Recon. 1") &
+    theme(aspect.ratio = 1, legend.position = "bottom")
+```
+
+```{r fig.width=10, fig.height=6}
+p1 <- ggplot(tonsil_mdat, aes(x=spatial_x, y=spatial_y, fill=cell_type)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "Ground-truth") &
+  theme(aspect.ratio = 1, legend.position = "none")
+p2 <- ggplot(tonsil_recon_morph, aes(x=align_morph_recon_x_1, y=align_morph_recon_y_1, fill=node_type)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "Morphed recon") &
+  theme(aspect.ratio = 1, legend.position = "bottom")
+
+p1 + p2
+```
+
+Add to metadata
+
+```{r}
+tonsil_recon2 <- merge(tonsil_recon, tonsil_recon_morph[, c("node_bc", "align_morph_recon_x_1", "align_morph_recon_y_1")], by="node_bc") 
+rownames(tonsil_recon2) <- paste0(tonsil_recon2$node_bc, "-1")
+```
+
+```{r}
+se_tonsil <- AddMetaData(se_tonsil, metadata = tonsil_recon2 |> select(-c(1)))
+```
+
+```{r}
+is.na(se_tonsil$cell_type) |> sum()
+
+is.na(se_tonsil$recon_x_1) |> sum()
+
+head(se_tonsil@meta.data)
+```
+
+Remove cells without any reconstructed positions
+
+```{r}
+dim(se_tonsil)
+cells_remove <- se_tonsil$recon_x_1[is.na(se_tonsil$recon_x_1)] |> names(); length(cells_remove)
+cells_keep <- colnames(se_tonsil)[!colnames(se_tonsil) %in% cells_remove]; length(cells_keep)
+```
+
+```{r}
+se_tonsil <- subset(se_tonsil, cells = cells_keep)
+```
+
+## Slide-tags data re-analysis
+
+See if I can rerun the filtering and clustering of the data and obtain same/similar cell type clusters as originally presented in the paper:
+
+> **Quality control and cell type assignment**
+>
+> The output generated by Cell Ranger and filtered by CellBender was read into R (v.4.1.1) using Seurat (v.4.3.0).
+>
+> We normalized the total UMIs per nucleus to 10,000 (CP10K) and log-transformed these values to report gene expression as E = log\[CP10K + 1\].
+>
+> We identified the top 2,000 highly variable genes after using variance-stabilizing transformation correction.
+>
+> All gene expression values were scaled and centred.
+>
+> For visualization in two dimensions, we embedded nuclei in a UMAP using the top 30 principal components, with number of neighbours =30, min_dist = 0.3, spread =1, local connectivity = 1 and the cosine distance metric.
+>
+> We identified shared nearest neighbours using the top 30 principal components.
+>
+> Clusters of similar cells were detected using the Louvain method for community detection, implemented using FindClusters, with resolution = 1.
+>
+> Annotation of de novo clusters was aided by marker genes and Azumith reference-based mapping from the human tonsil atlas.
+
+```{r}
+tonsil_mdat$cell_type |> unique() |> length()
+```
+
+### Filter data
+
+There doesn't seem to be much information regarding filtering. In the cell type metadata, there are 5778 cells, however, in the full data set there are 9360 cells.
+
+```{r}
+se_tonsil_orig <- subset(se_tonsil, cells = tonsil_mdat$barcode)
+
+new_cells <- filter(se_tonsil@meta.data, !barcode %in% tonsil_mdat$barcode) |> rownames()
+se_tonsil_new <- subset(se_tonsil, cells = new_cells)
+```
+
+### Process
+
+```{r}
+se_tonsil_orig <- NormalizeData(se_tonsil_orig, 
+                                scale.factor = 10000)
+```
+
+```{r}
+se_tonsil_orig <- FindVariableFeatures(se_tonsil_orig, 
+                                       nfeatures = 2000, 
+                                       selection.method = 'vst')
+```
+
+```{r}
+se_tonsil_orig <- ScaleData(se_tonsil_orig, 
+                            do.scale = T, 
+                            do.center = T)
+```
+
+### Dim reduction & clustering
+
+```{r}
+se_tonsil_orig <- RunPCA(se_tonsil_orig)
+```
+
+```{r fig.width=6, fig.height=4}
+ElbowPlot(se_tonsil_orig, ndims = 50)
+```
+
+```{r fig.width=14, fig.height=18}
+DimHeatmap(se_tonsil_orig, reduction = "pca", dims = 1:30, ncol = 5)
+DimHeatmap(se_tonsil_orig, reduction = "pca", dims = 31:50, ncol = 5)
+```
+
+```{r}
+# n_dims <- 30
+n_dims <- 20
+```
+
+```{r}
+se_tonsil_orig <- RunUMAP(se_tonsil_orig, 
+                          dims = 1:n_dims, 
+                          reduction = "pca", 
+                          n.neighbors = n_dims, 
+                          min.dist = 0.3, 
+                          spread = 1, 
+                          local.connectivity = 1)
+```
+
+```{r}
+se_tonsil_orig <- FindNeighbors(se_tonsil_orig, dims = 1:n_dims, reduction = "pca", compute.SNN = T)
+se_tonsil_orig <- FindClusters(se_tonsil_orig, resolution = 0.75)
+```
+
+### Plot and annotate clusters
+
+```{r fig.width=14, fig.height=6}
+DimPlot(se_tonsil_orig, reduction = "umap", group.by = "seurat_clusters", 
+        cols = paletteer_d("ggsci::category20_d3", n = 20)) & labs(title="New cell clusters") |
+  DimPlot(se_tonsil_orig, reduction = "umap", group.by = "cell_type",
+          cols = paletteer_d("ggsci::category20_d3", n = 20)) & labs(title="Original cell clusters")
+```
+
+When using PCA dims 1:20 and cluster res = 0.7, there are 14 clusters. By merging the B-cell (germinal center) clusters, we can get something more similar to the original cell labels.
+
+When using PCA dims 1:20 and cluster res = 0.75, there are 15 clusters. By merging the B-cell (germinal center) clusters and the mDC clusters, we can get something more similar to the original cell labels.
+
+```{r}
+# se_tonsil_orig$seurat_clusters_mod <- ifelse(se_tonsil_orig$seurat_clusters %in% c(1,2,7), 
+#                                              yes = 20, no = se_tonsil_orig$seurat_clusters)
+
+se_tonsil_orig$seurat_clusters_mod <- ifelse(se_tonsil_orig$seurat_clusters %in% c(1,2,7), 
+                                             yes = 19, no = se_tonsil_orig$seurat_clusters)
+se_tonsil_orig$seurat_clusters_mod <- ifelse(se_tonsil_orig$seurat_clusters %in% c(10,14), 
+                                             yes = 20, no = se_tonsil_orig$seurat_clusters_mod)
+```
+
+```{r fig.width=14, fig.height=6}
+DimPlot(se_tonsil_orig, reduction = "umap", group.by = "seurat_clusters_mod", 
+        cols = paletteer_d("ggsci::category20_d3", n = 20)) & labs(title="New grouped cell clusters") |
+  DimPlot(se_tonsil_orig, reduction = "umap", group.by = "cell_type",
+          cols = paletteer_d("ggsci::category20_d3", n = 20)) & labs(title="Original cell clusters")
+```
+
+Summarize number of cells belonging to the seurat clusters vs the previous cell type annotations.
+
+```{r}
+clust_summary <- se_tonsil_orig@meta.data |> 
+  select(seurat_clusters_mod, cell_type) |> 
+  group_by(seurat_clusters_mod, cell_type) |> 
+  summarise(n_cells = n())
+
+clust_summary
+```
+
+```{r fig.height=4, fig.width=8}
+p1 <- ggplot(clust_summary, aes(x = reorder(seurat_clusters_mod, desc(seurat_clusters_mod)), 
+                          y = n_cells, fill = cell_type)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(x="Cluster", y="N cells") &
+  coord_flip() &
+  theme(legend.position = "right");p1
+
+p2 <- ggplot(clust_summary, aes(x = reorder(seurat_clusters_mod, desc(seurat_clusters_mod)), 
+                          y = n_cells, fill = cell_type)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(x="Cluster", y="Fraction") &
+  coord_flip() &
+  theme(legend.position = "right")
+
+(p1 & theme(legend.position = "none")) | p2
+```
+
+Plot labels using original UMAP embedding
+
+```{r fig.width=16, fig.height=7}
+p_dat <- se_tonsil_orig@meta.data
+
+p1 <- ggplot(p_dat, aes(x=UMAP_1, y=UMAP_2, fill=cell_type)) +
+  geom_point(shape=21, size=1, alpha=0.8) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "Original cell clusters")
+  
+p2 <- ggplot(p_dat, aes(x=UMAP_1, y=UMAP_2, fill=as.factor(seurat_clusters_mod))) +
+  geom_point(shape=21, size=1, alpha=0.8) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "New cell clusters (modified)")
+  
+p3 <- ggplot(p_dat, aes(x=UMAP_1, y=UMAP_2, fill=as.factor(seurat_clusters))) +
+  geom_point(shape=21, size=1, alpha=0.8) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "New cell clusters (original)")
+
+(p1|p2|p3) & 
+  theme_linedraw() & 
+  theme(aspect.ratio = 1, legend.position = "bottom", legend.title = element_blank()) &
+  guides(fill = guide_legend(override.aes = list(size = 3), ncol = 4))
+```
+
+## New cell data
+
+Since no clear guidance on cell filtering steps were presented in the paper, I will try to deduce the type of filtering that was performed by looking at gene and UMI distributions, and other things such as percentage of mitochondrial counts.
+
+```{r}
+se_tonsil[["percent.mt"]] <- PercentageFeatureSet(object = se_tonsil, pattern = "^MT-")
+se_tonsil_orig[["percent.mt"]] <- PercentageFeatureSet(object = se_tonsil_orig, pattern = "^MT-")
+se_tonsil_new[["percent.mt"]] <- PercentageFeatureSet(object = se_tonsil_new, pattern = "^MT-")
+```
+
+```{r fig.width=10, fig.height=6}
+VlnPlot(se_tonsil, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), 
+        group.by = "orig.ident") & theme(axis.title.x = element_blank()) |
+  VlnPlot(se_tonsil_orig, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"), 
+        group.by = "orig.ident") & theme(axis.title.x = element_blank())
+```
+
+```{r}
+min_umi <- min(se_tonsil$nCount_RNA);min_umi
+min_gene <- min(se_tonsil$nFeature_RNA);min_gene
+max_mt <- max(se_tonsil$percent.mt);max_mt
+
+min_umi_orig <- min(se_tonsil_orig$nCount_RNA);min_umi_orig
+min_gene_orig <- min(se_tonsil_orig$nFeature_RNA);min_gene_orig
+max_mt_orig <- max(se_tonsil_orig$percent.mt);max_mt_orig
+```
+
+Set filtering cutoffs to:
+
+-   UMIs \> 600 (min UMI in filtered data is 625)
+
+-   Unique genes \> 500
+
+-   Pct MT-genes \< 8.5
+
+```{r}
+se_tonsil_new |> dim()
+```
+
+```{r}
+cutoff_umi <- 600
+cutoff_gene <- 500
+cutoff_mt <- 8.5
+
+se_tonsil_new_filt <- subset(se_tonsil_new,
+                             nCount_RNA > cutoff_umi &
+                               nFeature_RNA > cutoff_gene &
+                               percent.mt < 8.5
+                               )
+
+se_tonsil_new_filt |> dim()
+```
+
+### Process
+
+```{r}
+se_tonsil_new_filt <- NormalizeData(se_tonsil_new_filt, 
+                                    scale.factor = 10000)
+```
+
+```{r}
+se_tonsil_new_filt <- FindVariableFeatures(se_tonsil_new_filt, 
+                                           nfeatures = 2000,
+                                           selection.method = 'vst')
+```
+
+```{r}
+se_tonsil_new_filt <- ScaleData(se_tonsil_new_filt, 
+                                do.scale = T, 
+                                do.center = T)
+```
+
+### Dim reduction & clustering
+
+```{r}
+se_tonsil_new_filt <- RunPCA(se_tonsil_new_filt)
+```
+
+```{r fig.width=6, fig.height=4}
+ElbowPlot(se_tonsil_new_filt, ndims = 50)
+```
+
+```{r fig.width=14, fig.height=18}
+DimHeatmap(se_tonsil_new_filt, reduction = "pca", dims = 1:30, ncol = 5)
+DimHeatmap(se_tonsil_new_filt, reduction = "pca", dims = 31:50, ncol = 5)
+```
+
+```{r}
+# n_dims <- 30
+n_dims <- 30
+```
+
+```{r}
+se_tonsil_new_filt <- RunUMAP(se_tonsil_new_filt, 
+                              dims = 1:n_dims, 
+                              reduction = "pca", 
+                              n.neighbors = n_dims, 
+                              min.dist = 0.3, 
+                              spread = 1, 
+                              local.connectivity = 1)
+```
+
+```{r}
+se_tonsil_new_filt <- FindNeighbors(se_tonsil_new_filt, dims = 1:n_dims, reduction = "pca", compute.SNN = T)
+se_tonsil_new_filt <- FindClusters(se_tonsil_new_filt, resolution = 0.75)
+```
+
+### Plot clusters
+
+```{r fig.width=6, fig.height=6}
+DimPlot(se_tonsil_new_filt, reduction = "umap", group.by = "seurat_clusters", 
+        cols = paletteer_d("ggsci::category20_d3", n = 20)) & labs(title="New cell clusters")
+```
+
+```{r fig.width=12, fig.height=6}
+spat_data_new <- se_tonsil_new_filt@meta.data
+
+ggplot(spat_data_new, aes(x=recon_x_1, y=recon_y_1, fill=seurat_clusters)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "Reconstructed positions and cell clusters", subtitle="New cell data") &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "bottom") |
+  ggplot(se_tonsil_orig@meta.data, aes(x=recon_x_1, y=recon_y_1, fill=cell_type)) +
+    geom_point(shape=21) & 
+    scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+    labs(title = "Reconstructed positions and original cell types", subtitle="Original cell data") &
+    theme_bw() &
+    theme(aspect.ratio = 1, legend.position = "bottom")
+```
+
+### Integrate new cell data with original data and labels
+
+#### Integration
+
+Follow steps presented in this tutorial: https://satijalab.org/seurat/reference/findtransferanchors
+
+```{r}
+# find anchors
+anchors <- FindTransferAnchors(reference = se_tonsil_orig, query = se_tonsil_new_filt)
+```
+
+```{r}
+# transfer labels
+predictions <- TransferData(
+  anchorset = anchors,
+  refdata = se_tonsil_orig$cell_type
+)
+```
+
+```{r}
+se_tonsil_new_filt <- AddMetaData(object = se_tonsil_new_filt, metadata = predictions)
+```
+
+Save cell type and pre score output for all new cells.
+
+```{r}
+out_dat <- se_tonsil_new_filt@meta.data
+out_dat$node_bc <- rownames(out_dat)
+out_dat$node_type <- out_dat$predicted.id
+
+out_dat <- out_dat |> 
+  select(node_bc, node_type, starts_with("prediction.score."), starts_with("recon_"), starts_with("align_recon"))
+
+write.csv(out_dat, file = file.path(DIR_RES, "tonsil_recon_gated_new_cell_predictions_metadata.csv"), 
+          row.names = F, col.names = T)
+```
+
+#### Plot results
+
+```{r fig.width=16, fig.height=6}
+ggplot(se_tonsil_new_filt@meta.data, aes(x=align_recon_x_1, y=align_recon_y_1, fill=predicted.id)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "Reconstructed positions and predicted cell types", subtitle="New cell data") &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "none") |
+  ggplot(se_tonsil_orig@meta.data, aes(x=align_recon_x_1, y=align_recon_y_1, fill=cell_type)) +
+    geom_point(shape=21) & 
+    scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+    labs(title = "Reconstructed positions and original cell types", subtitle="Original cell data") &
+    theme_bw() &
+    theme(aspect.ratio = 1, legend.position = "none", legend.title = element_blank()) &
+    guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1)) |
+  ggplot(se_tonsil_orig@meta.data, aes(x=spatial_x, y=spatial_y, fill=cell_type)) +
+    geom_point(shape=21) & 
+    scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+    labs(title = "Reconstructed positions and original cell types", subtitle="Original cell data") &
+    theme_bw() &
+    theme(aspect.ratio = 1, legend.position = "right", legend.title = element_blank()) &
+    guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+```
+
+UMAP
+
+```{r}
+se_tonsil_new_filt <- AddMetaData(se_tonsil_new_filt, 
+                                  metadata = se_tonsil_new_filt@reductions$umap@cell.embeddings, col.name = c("UMAP_1", "UMAP_2"))
+```
+
+```{r fig.width=12, fig.height=6}
+p1 <- ggplot(se_tonsil_new_filt@meta.data, aes(x=UMAP_1, y=UMAP_2, fill=predicted.id)) +
+  geom_point(shape=21, size=1, alpha=0.8) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+  labs(title = "Reconstructed positions and predicted cell types", subtitle="New cell data") &
+  theme_linedraw() & 
+  theme(aspect.ratio = 1, legend.position = "none")
+  
+p2 <- ggplot(se_tonsil_orig@meta.data, aes(x=UMAP_1, y=UMAP_2, fill=as.factor(cell_type))) +
+  geom_point(shape=21, size=1, alpha=0.8) & 
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) &
+    labs(title = "Reconstructed positions and original cell types", subtitle="Original cell data") & 
+  theme_linedraw() & 
+  theme(aspect.ratio = 1, legend.position = "right", legend.title = element_blank()) &
+  guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+
+(p1|p2)
+```
+
+Plot spatial, one cluster at the time
+
+```{r}
+p_data1 <- se_tonsil_new_filt@meta.data
+p_data2 <- se_tonsil_orig@meta.data
+cell_types <- p_data2$cell_type |> unique() |> sort()
+cell_colors <- rep("grey95", length(cell_types))
+```
+
+```{r}
+x_transform <- 1
+y_transform <- 1
+p_data1$recon_x <- p_data1$align_recon_x_1 * x_transform
+p_data1$recon_y <- p_data1$align_recon_y_1 * y_transform
+
+p_data2$recon_x <- p_data2$align_recon_x_1 * x_transform
+p_data2$recon_y <- p_data2$align_recon_y_1 * y_transform
+```
+
+```{r fig.width=14, fig.height=4}
+cell <- cell_types[1]
+cell_colors[1] <- paletteer_d("ggsci::category20_d3", n = 20)[1]
+
+p1 <- ggplot(subset(p_data1, predicted.id==cell), 
+             aes(x=recon_x, y=recon_y, fill=prediction.score.B_germinal_center)) +
+  geom_point(shape=21) & 
+  # scale_fill_manual(values = cell_colors) &
+  scale_fill_paletteer_c("grDevices::Purple-Yellow", direction = -1) &
+  labs(title = paste(cell, "| New cell data"), fill="Pred. score") &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "bottom")
+p2 <- ggplot(subset(p_data2, cell_type==cell), 
+             aes(x=recon_x, y=recon_y, fill=cell_type)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = cell_colors) &
+  labs(title = paste(cell, "| Original cell data (recon)")) &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "none", legend.title = element_blank()) &
+  guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+p3 <- ggplot(subset(p_data2, cell_type==cell), 
+             aes(x=spatial_x, y=spatial_y, fill=cell_type)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = cell_colors) &
+  labs(title = paste(cell, "| Original cell data (gt)")) &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "none", legend.title = element_blank()) &
+  guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+
+(p1|p2|p3)
+```
+
+```{r fig.width=22, fig.height=30}
+p_list <- list()
+p_list <- lapply(1:length(cell_types), function(i){
+  cell <- cell_types[i]
+  # cell_colors[i] <- paletteer_d("ggsci::category20_d3", n = 20)[i]
+  cell_colors <- paletteer_d("ggsci::category20_d3", n = 20)[i]
+  p1 <- ggplot(subset(p_data1, predicted.id==cell), aes_string(x="recon_x", y="recon_y", fill=paste0("prediction.score.", cell))) +
+  geom_point(shape=21) & 
+  # scale_fill_manual(values = cell_colors) &
+  scale_fill_paletteer_c("grDevices::Purple-Yellow", direction = -1) &
+  labs(title = paste(cell, "| New cell data"), fill="Pred. score") &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "bottom")
+  p2 <- ggplot(subset(p_data2, cell_type==cell), aes(x=recon_x, y=recon_y, fill=cell_type)) +
+    geom_point(shape=21) & 
+    scale_fill_manual(values = cell_colors) &
+    labs(title = paste(cell, "| Original cell data (recon)")) &
+    theme_bw() &
+    theme(aspect.ratio = 1, legend.position = "none", legend.title = element_blank()) &
+    guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+  p3 <- ggplot(subset(p_data2, cell_type==cell), aes(x=spatial_x, y=spatial_y, fill=cell_type)) +
+    geom_point(shape=21) & 
+    scale_fill_manual(values = cell_colors) &
+    labs(title = paste(cell, "| Original cell data (gt)")) &
+    theme_bw() &
+    theme(aspect.ratio = 1, legend.position = "none", legend.title = element_blank()) &
+    guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+  return(p1|p2|p3)
+})
+
+patchwork::wrap_plots(p_list, ncol = 2)
+```
+
+```{r}
+# Save to PDF
+pdf(file = file.path(DIR_RES, "tonsil_recon_gated_new_cell_predictions_spatial_split.pdf"), width = 22, height = 30)
+patchwork::wrap_plots(p_list, ncol = 2)
+dev.off()
+```
+
+#### Describe added cells and their properties
+
+Compute cell type abundances/proportions
+
+```{r}
+prop_cell_orig <- se_tonsil_orig@meta.data |> 
+  group_by(cell_type) |> 
+  summarise(n_cells_orig = n(),
+            freq_cells_orig = n()/nrow(se_tonsil_orig@meta.data)) |> 
+  mutate(pct_cells_orig = freq_cells_orig*100)
+
+prop_cell_new <- se_tonsil_new_filt@meta.data |> 
+  group_by(predicted.id) |> 
+  summarise(n_cells_new = n(),
+            freq_cells_new = n()/nrow(se_tonsil_new_filt@meta.data)) |> 
+  mutate(pct_cells_new = freq_cells_new*100,
+         cell_type = predicted.id) |> 
+  select(-predicted.id)
+
+prop_cell <- merge(prop_cell_orig, prop_cell_new, by="cell_type")
+prop_cell
+```
+
+Plot
+
+```{r}
+prop_cell_long <- pivot_longer(prop_cell, 
+                               cols = starts_with("pct_cells_"),
+                               names_to = "dataset", 
+                               names_prefix = "pct_cells_",
+                               values_to = "pct")
+```
+
+```{r}
+prop_cell$pct_diff <- prop_cell$pct_cells_new - prop_cell$pct_cells_orig
+```
+
+```{r fig.width=7, fig.height=5}
+p1 <- ggplot(prop_cell_long, aes(x = reorder(cell_type, n_cells_orig), y = pct, fill = dataset)) + 
+  geom_hline(yintercept = 0, linewidth=0.25) +
+  geom_bar(position="dodge", stat="identity", width = 0.8) +
+  scale_fill_manual(values = c("#1F77B4FF", "#9EDAE5FF")) + # paletteer_d("ggsci::category20_d3", n = 2)
+  labs(x="Cell type", y="Percent of total cells") +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "top")
+
+p2 <- ggplot(prop_cell, aes(x = reorder(cell_type, pct_diff), y = pct_diff, fill = cell_type)) + 
+  geom_hline(yintercept = 0, linewidth=0.25) +
+  geom_bar(stat="identity", width = 0.8) +
+  scale_fill_manual(values = paletteer_d("ggsci::category20_d3", n = 20)) + # paletteer_d("ggsci::category20_d3", n = 2)
+  labs(x="", y="Percent difference\n(new-orig)") +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "none")
+
+p1|p2
+```
+
+Look at number of genes, UMIs, and pct-mt in the newly added cells - compare with original cells
+
+```{r fig.width=6, fig.height=4}
+VlnPlot(se_tonsil_new_filt, features = "nCount_RNA", group.by = "predicted.id") & 
+  # geom_hline(yintercept = 1e3, style="dashed") &
+  scale_y_log10() &
+  coord_flip() &
+  theme_bw() &
+  theme(axis.title.y = element_blank(), legend.position = "none") | 
+  VlnPlot(se_tonsil_orig, features = "nCount_RNA", group.by = "cell_type") & 
+  scale_y_log10() &
+  coord_flip() &
+  theme_bw() &
+  theme(axis.title.y = element_blank(), legend.position = "none")
+
+
+VlnPlot(se_tonsil_new_filt, features = "nFeature_RNA", group.by = "predicted.id") & 
+  scale_y_log10() &
+  coord_flip() &
+  theme_bw() &
+  theme(axis.title.y = element_blank(), legend.position = "none") | 
+  VlnPlot(se_tonsil_orig, features = "nFeature_RNA", group.by = "cell_type") & 
+  scale_y_log10() &
+  coord_flip() &
+  theme_bw() &
+  theme(axis.title.y = element_blank(), legend.position = "none")
+
+
+VlnPlot(se_tonsil_new_filt, features = "percent.mt", group.by = "predicted.id") & 
+  # scale_y_log10() &
+  coord_flip() &
+  theme_bw() &
+  theme(axis.title.y = element_blank(), legend.position = "none") | 
+  VlnPlot(se_tonsil_orig, features = "percent.mt", group.by = "cell_type") & 
+  # scale_y_log10() &
+  coord_flip() &
+  theme_bw() &
+  theme(axis.title.y = element_blank(), legend.position = "none")
+```
+
+So, what's wrong with the germinal center B cells? Why don't they localize as accurately as the other cell types?
+
+```{r fig.width=16, fig.height=4}
+cell <- "B_germinal_center"
+cell_colors <- rep("grey95", length(cell_types))
+cell_colors[1] <- paletteer_d("ggsci::category20_d3", n = 20)[1]
+
+p1 <- ggplot(subset(p_data1, predicted.id==cell), aes(x=recon_x, y=recon_y, fill=nCount_RNA)) +
+  geom_point(shape=21) & 
+  # scale_fill_manual(values = cell_colors) &
+  scale_fill_paletteer_c("grDevices::Purple-Yellow", direction = -1) &
+  labs(title = paste(cell, "| New cell data")) &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "bottom")
+
+p2 <- ggplot(subset(p_data1, predicted.id==cell), aes(x=recon_x, y=recon_y, fill=nFeature_RNA)) +
+  geom_point(shape=21) & 
+  # scale_fill_manual(values = cell_colors) &
+  scale_fill_paletteer_c("grDevices::Purple-Yellow", direction = -1) &
+  labs(title = paste(cell, "| New cell data")) &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "bottom")
+
+p3 <- ggplot(subset(p_data1, predicted.id==cell), aes(x=recon_x, y=recon_y, fill=percent.mt)) +
+  geom_point(shape=21) & 
+  # scale_fill_manual(values = cell_colors) &
+  scale_fill_paletteer_c("grDevices::Purple-Yellow", direction = -1) &
+  labs(title = paste(cell, "| New cell data")) &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "bottom")
+
+p4 <- ggplot(subset(p_data2, cell_type==cell), aes(x=recon_x, y=recon_y, fill=cell_type)) +
+  geom_point(shape=21) & 
+  scale_fill_manual(values = cell_colors) &
+  labs(title = paste(cell, "| Original cell data (recon)")) &
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "none", legend.title = element_blank()) &
+  guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+
+
+(p1|p2|p3|p4)
+```
+
+## Export data
+
+### Export for squidpy
+
+Prepare data to be processed and analysed with Squidpy instead for Spatial analysis assessment and comparison.
+
+To create an AnnData object, we need the count matrix, coordinates, and metadata
+
+```{r}
+# devtools::install_github("satijalab/seurat-data") # not needed?
+# devtools::install_github("mojaveazure/seurat-disk") # contains the SaveH5Seurat function
+```
+
+```{r}
+# library(SeuratData)
+library(SeuratDisk)
+```
+
+**Original cell data**
+
+Ground truth (gt) and reconstructed (rc) coordinates
+
+```{r}
+se_tonsil_orig@meta.data[se_tonsil_orig$align_recon_x_1=="NA",]
+```
+
+```{r}
+se_export_orig_gt <- se_export_orig_rc <- se_tonsil_orig
+
+# If the non-scaled data should be imported to squidpy, it needs to be overwritten with the normalized data
+se_export_orig_gt@assays$RNA@scale.data <- se_export_orig_gt@assays$RNA@data[VariableFeatures(se_export_orig_gt), ] |>
+  as.matrix()
+se_export_orig_rc@assays$RNA@scale.data <- se_export_orig_rc@assays$RNA@data[VariableFeatures(se_export_orig_rc), ] |>
+  as.matrix()
+
+# Define main reconstructed spatial coordinates to save
+se_export_orig_rc$spatial_x <- se_export_orig_rc$align_recon_x_1
+se_export_orig_rc$spatial_y <- se_export_orig_rc$align_recon_y_1
+
+# If morphed coords are available:
+se_export_orig_rc$spatial_x_morph <- se_export_orig_rc$align_morph_recon_x_1.x
+se_export_orig_rc$spatial_y_morph <- se_export_orig_rc$align_morph_recon_y_1.x
+
+# Define metadata columns to be removed
+cols_remove <- se_export_orig_rc@meta.data |> select(contains("recon_x_")) |> colnames()
+cols_remove <- c(cols_remove, se_export_orig_rc@meta.data |> select(contains("recon_y_")) |> colnames())
+
+# Clean-up metadata
+se_export_orig_rc@meta.data <- se_export_orig_rc@meta.data[, -which(colnames(se_export_orig_rc@meta.data) %in% cols_remove)]
+se_export_orig_gt@meta.data <- se_export_orig_gt@meta.data[, -which(colnames(se_export_orig_gt@meta.data) %in% cols_remove)]
+```
+
+```{r}
+SaveH5Seurat(se_export_orig_gt, filename = file.path(DIR_RES, "se_data_orig_cells_gt_assayData.h5Seurat"), overwrite = T)
+Convert(file.path(DIR_RES, "se_data_orig_cells_gt_assayData.h5Seurat"), dest = "h5ad", overwrite = T)
+```
+
+```{r}
+SaveH5Seurat(se_export_orig_rc, filename = file.path(DIR_RES, "se_data_orig_cells_rc_assayData.h5Seurat"), overwrite = T)
+Convert(file.path(DIR_RES, "se_data_orig_cells_rc_assayData.h5Seurat"), dest = "h5ad", overwrite = T)
+```
+
+**New cell data**
+
+```{r}
+se_export_new <- se_tonsil_new_filt
+
+# Prepare columns
+se_export_new$cell_type <- se_export_new$predicted.id
+se_export_new$spatial_x <- se_export_new$align_recon_x_1
+se_export_new$spatial_y <- se_export_new$align_recon_y_1
+
+# If morphed coords are available:
+se_export_new$spatial_x_morph <- se_export_new$align_morph_recon_x_1.x
+se_export_new$spatial_y_morph <- se_export_new$align_morph_recon_y_1.x
+
+# Set default assay as norm count data
+se_export_new@assays$RNA@scale.data <- se_export_new@assays$RNA@data[VariableFeatures(se_export_new), ] |> as.matrix()
+
+cols_remove <- se_tonsil_new_filt@meta.data |> select(contains("recon_x_")) |> colnames()
+cols_remove <- c(cols_remove, se_tonsil_new_filt@meta.data |> select(contains("recon_y_")) |> colnames())
+
+se_export_new@meta.data <- se_export_new@meta.data[, -which(colnames(se_export_new@meta.data) %in% cols_remove)]
+```
+
+```{r}
+SaveH5Seurat(se_export_new, filename = file.path(DIR_RES, "se_data_new_cells_filt_assayData.h5Seurat"), overwrite = T)
+Convert(file.path(DIR_RES, "se_data_new_cells_filt_assayData.h5Seurat"), dest = "h5ad", overwrite = T)
+```
+
+**Morphed, orig+new rc**
+
+```{r}
+se_export_orig_new_rc <- merge(se_export_orig_rc, se_export_new)
+```
+
+
+```{r}
+se_export_orig_new_rc <- NormalizeData(se_export_orig_new_rc, 
+                                scale.factor = 10000)
+
+se_export_orig_new_rc <- FindVariableFeatures(se_export_orig_new_rc, 
+                                       nfeatures = 2000, 
+                                       selection.method = 'vst')
+
+se_export_orig_new_rc <- ScaleData(se_export_orig_new_rc, 
+                            do.scale = T, 
+                            do.center = T)
+```
+
+```{r}
+ggplot(se_export_orig_new_rc@meta.data, aes(x=spatial_x_morph, y=spatial_y_morph, fill=cell_type)) +
+  geom_point(shape=21) & 
+  theme_bw() &
+  theme(aspect.ratio = 1, legend.position = "right", legend.title = element_blank()) &
+  guides(fill = guide_legend(override.aes = list(size = 3), ncol = 1))
+```
+```{r}
+SaveH5Seurat(se_export_orig_new_rc, filename = file.path(DIR_RES, "se_data_orig_new_cells_filt_assayScaleData.h5Seurat"), overwrite = T)
+Convert(file.path(DIR_RES, "se_data_orig_new_cells_filt_assayScaleData.h5Seurat"), dest = "h5ad", overwrite = T)
+```
+
+
+```{r}
+# Set default assay as norm count data
+se_export_orig_new_rc@assays$RNA@scale.data <- se_export_orig_new_rc@assays$RNA@data[VariableFeatures(se_export_new), ] |> as.matrix()
+SaveH5Seurat(se_export_orig_new_rc, filename = file.path(DIR_RES, "se_data_orig_new_cells_filt_assayData.h5Seurat"), overwrite = T)
+Convert(file.path(DIR_RES, "se_data_orig_new_cells_filt_assayData.h5Seurat"), dest = "h5ad", overwrite = T)
+```
+
+
+
+### Export seurat objects and metadata
+
+```{r}
+saveRDS(se_tonsil_orig, file.path(DIR_RES, "se_tonsil_orig.rds"))
+saveRDS(se_tonsil_new_filt, file.path(DIR_RES, "se_tonsil_new_filt.rds"))
+```
+
+```{r}
+write.csv(se_tonsil_orig@meta.data, file = file.path(DIR_RES, "se_tonsil_orig_metadata.csv"), 
+          row.names = T, col.names = T)
+
+write.csv(se_tonsil_new_filt@meta.data, file = file.path(DIR_RES, "se_tonsil_new_filt_metadata.csv"), 
+          row.names = T, col.names = T)
+```
+
+## SessionInfo
+
+```{r}
+sessionInfo()
+```
