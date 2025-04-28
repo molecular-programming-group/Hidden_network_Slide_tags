@@ -46,7 +46,7 @@ Biological analysis is run by .qmd R files and a jupyter notebook from the "anal
 
 The input data is currently empty but is publically available as a part of the the original Slide-tags article: https://doi.org/10.1038/s41586-023-06837-4
 
-Non-sequencing Human tonsil data (SCP169)](https://singlecell.broadinstitute.org/single_cell/study/SCP2169/slide-tags-snrna-seq-on-human-tonsil#/)
+Non-sequencing Human tonsil data [SCP2169](https://singlecell.broadinstitute.org/single_cell/study/SCP2169/slide-tags-snrna-seq-on-human-tonsil#/)
 
 Mouse data sets are also publically available including sequencing data.
 
