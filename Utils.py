@@ -485,8 +485,8 @@ subgraph_to_analyse = {
     "subgraph_number"           : 1       ,
     "knn_neighbours"            : 15         ,
     "minimum_subgraph_size"     : 10,
-    "regenerate_detailed_edges" : False,
-    "regenerate_summary_files"  : False,
+    "regenerate_detailed_edges" : True,
+    "regenerate_summary_files"  : True,
     "gating_threshold"          : None, #"pseudo=False", #"pseudo=False", # None, all, dbscan, or a another indentifier as long as it is in the file name such as pseudo=False
     "include_recursively_gated" : False, 
     "include_ungated"           : True

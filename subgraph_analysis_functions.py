@@ -1309,7 +1309,7 @@ class subgraphToAnalyse():
                 return False
 
     def generate_detailed_edgefile(self, generate_new_file = False, save_type = ""):
-        file_check = self.save_output_file( type = "detailed_edgelist", mode = "check")
+        file_check = self.save_output_file(type = "detailed_edgelist", mode = "check")
 
         # If the file exists, do not regenerate it unless specfically told so
         if file_check and not generate_new_file:
@@ -1800,6 +1800,6 @@ if __name__== "__main__":
     from Utils import *
     from Utils import ConfigLoader
 
-    #config_subgraph_analysis_mouse_hippocampus, config_subgraph_analysis_mouse_embryo, config_subgraph_analysis_tonsil, config_analysis
+    #config_subgraph_analysis_mouse_hippocampus, config_subgraph_analysis_mouse_embryo, config_subgraph_analysis_tonsil, config_analysis, config_subgraph_analysis
     config = ConfigLoader('config_subgraph_analysis.py')
     perform_analysis_actions(config)
