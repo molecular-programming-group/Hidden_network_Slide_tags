@@ -58,11 +58,14 @@ def enrich_subgraphs_simple(config):
 
     subgraph_choice_args = config.simple_subgraph_enriching_args.subgraph_to_enrich
     config.subgraphs_folder_path = f"{config.run_path_base}/{subgraph_choice_args.bi_or_unipartite}-{subgraph_choice_args.filter_type}_{subgraph_choice_args.current_threshold}"
-    
-    if subgraph_choice_args.enrich_all_subgraphs:
-        all_subgraph_files = [f for f in os.listdir(config.subgraphs_folder_path) if "unw" in f and ".csv" in f]
-    else:
-        all_subgraph_files = [f for f in os.listdir(config.subgraphs_folder_path) if "unw" in f and ".csv" in f and f"subgraph_{config.simple_subgraph_enriching_args.subgraph_to_enrich.subgraph_number}_" in f]
+    try:
+        if subgraph_choice_args.enrich_all_subgraphs:
+            all_subgraph_files = [f for f in os.listdir(config.subgraphs_folder_path) if "unw" in f and ".csv" in f]
+        else:
+            all_subgraph_files = [f for f in os.listdir(config.subgraphs_folder_path) if "unw" in f and ".csv" in f and f"subgraph_{config.simple_subgraph_enriching_args.subgraph_to_enrich.subgraph_number}_" in f]
+    except:
+        all_subgraph_files = []
+        print("No such filtering directory:", config.subgraphs_folder_path)
     all_subgraphs = []
     for subgraph in all_subgraph_files:
         subgraph_edgelist = pd.read_csv(f"{config.subgraphs_folder_path}/{subgraph}")
@@ -76,7 +79,7 @@ def enrich_subgraphs_simple(config):
     config.all_subgraphs = all_subgraphs
     return config
 
-def adapt_config_for_reconstruction_and_reconstruct(config, type = "enriched"):
+def  adapt_config_for_reconstruction_and_reconstruct(config, type = "enriched"):
     from reconstruction_functions import interpret_config_and_reconstruct
     from Utils import blank
     config.reconstruction_args = blank() #just needs to be a random class object
@@ -105,7 +108,8 @@ def adapt_config_for_reconstruction_and_reconstruct(config, type = "enriched"):
     for subgraph in config.all_subgraphs:
     # config.subgraph_path_split = 
         split_edge_path = subgraph.enrichment_folder.split("/")
-        config.strnd_output_path = f"STRND_structure/{config.sample_name}/{config.run_directory}/{split_edge_path[-2]}/{split_edge_path[-1]}"
+        dimension = config.simple_subgraph_enriching_args.reconstruction_dimension
+        config.strnd_output_path = f"STRND_structure/{config.sample_name}/{config.run_directory}/{split_edge_path[-2]}_{dimension}D/{split_edge_path[-1]}"
         config.run_path = f"{config.run_path_base}/{split_edge_path[-2]}/{split_edge_path[-1]}"
         config.strnd_input_path = f"STRND_structure/data/edge_lists"
         config.strnd_reconstruction_path = f"STRND_structure/data/reconstructed_positions"
@@ -116,7 +120,8 @@ def adapt_config_for_reconstruction_and_reconstruct(config, type = "enriched"):
             path_name = ''.join(s_list)  # Convert back to string
         else:
             path_name = split_edge_path[-1]
-        config.reconstruction_path = f"Subgraph_reconstructions/{config.sample_name}/{config.run_directory}/{split_edge_path[-2]}/{path_name}"
+        
+        config.reconstruction_path = f"Subgraph_reconstructions/{config.sample_name}/{config.run_directory}/{split_edge_path[-2]}_{dimension}D/{path_name}"
 
         config.subgraph_path_split = [subgraph.name]
 
@@ -333,9 +338,9 @@ def perform_dbscan_gated_double_reconstruction(config):
 if __name__== "__main__":
 
     from Utils import *
-    config = ConfigLoader("config_subgraph_modification.py")
+    config = ConfigLoader("config_subgraph_modification_mouse_embryo_uni.py")
 
-    perform_simple_subgraph_enriching(config)
+    # perform_simple_subgraph_enriching(config)
     # perform_distance_gated_double_reconstruction(config)
     # performSimpleSubgraphEnrichingParallel(config)
     # config.idx_to_bc = pd.read_csv(f"Intermediary_files/{config.sample_name}/barcode_to_index_mapping_all.csv")

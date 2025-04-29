@@ -208,7 +208,7 @@ simple_subgraph_enriching_args = {
         "thresholds"                    : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],    
     },
     "reconstruct"                       : True,
-    "reconstruction_dimension"          : 3,
+    "reconstruction_dimension"          : 2,
     "reconstruct_n_times"               : 1,
     "empty_strnd_folders"               : True 
 }
@@ -281,13 +281,13 @@ filter_analysis_args = {
 }
 
 subgraph_to_analyse = {
-    "all_subgraphs"             : False       ,  
+    "all_subgraphs"             : True       ,  
     "subgraph_number"           : 1       ,
     "knn_neighbours"            : 15         ,
     "minimum_subgraph_size"     : 10,
     "regenerate_detailed_edges" : False,
     "regenerate_summary_files"  : False,
-    "gating_threshold"          : None, #"pseudo=False", #"pseudo=False", # None, all, dbscan, or a another indentifier as long as it is in the file name such as pseudo=False
+    "gating_threshold"          : None, # None, all, dbscan, or a another indentifier as long as it is in the file name such as "pseudo=False" for the dbscan modified samples
     "include_recursively_gated" : False, 
     "include_ungated"           : True
     }
@@ -481,7 +481,7 @@ filter_analysis_args = {
 }
 
 subgraph_to_analyse = {
-    "all_subgraphs"             : False       ,  
+    "all_subgraphs"             : True       ,  
     "subgraph_number"           : 1       ,
     "knn_neighbours"            : 15         ,
     "minimum_subgraph_size"     : 10,

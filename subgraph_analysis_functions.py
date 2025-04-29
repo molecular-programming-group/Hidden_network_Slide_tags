@@ -778,7 +778,7 @@ class subgraphToAnalyse():
             ax_gt_subgraph.set_aspect("equal")
             return fig, gs, ax_gt_all, ax_gt_subgraph, fontsize, ax_gt_space
         
-    def plot_ground_truth(self, ax = None, position = 10, clr_scheme=None, size = None, with_edges = False):
+    def plot_ground_truth(self, ax = None, position = 10, clr_scheme=None, size = 8, with_edges = False):
         '''
         This functions plots the ground truth positions of the subgraph on any axis desired, and also uses the colourscheme specified in the config.
         Since we only need to plot nodes with a ground truth, it is relatively simpler than the reconstruction plotting function
