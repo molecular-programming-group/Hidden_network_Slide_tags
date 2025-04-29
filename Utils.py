@@ -116,7 +116,7 @@ def create_structure():
     ensure_directory("Subgraph_edgelists")
     ensure_directory("Subgraph_reconstructions")
     ensure_directory("Configs")
-    #region configs
+    #region configs tonsil default analysis
     content_standard_processes = """# Its very important the sample name is exactly correct, as it is used to find filepaths in essentially every step
 sample_name = "tonsil" #mouse_embryo, tonsil, mouse_hippocampus
 
@@ -178,11 +178,11 @@ reconstruction_args = {
     "empty_strnd_folders"               : True           #This option if true deletes files in the edgelists and reconstructed positions in the STRND strucutre to prevent file confusions
 }
     """
-    content_subgraph_modification = '''sample_name = "tonsil" # mouse_embryo , tonsil
+    content_subgraph_modification = '''sample_name = "tonsil" # mouse_embryo, tonsil, mouse_hippocampus
 
 file_localization_args = {
 
-    "ground_truth_file"   :"HumanTonsil_spatial.csv",  # HumanTonsil_spatial ,  mouseembryo_spatial
+    "ground_truth_file"   :"HumanTonsil_spatial.csv",  # HumanTonsil_spatial,  mouseembryo_spatial, mousehippocampus_spatial.csv
     "unfiltered_edge_file"     : "all_cells.csv", # generally "only_spatial_cells.csv" or "all_cells.csv"
     "run_parameters"           : {  
         "nUMI_sum_per_bead_thresholds"  :   [2, 1500], 
@@ -239,10 +239,10 @@ perform_distance_gated_double_reconstruction ={
 perform_dbscan_edge_filtering = {
     "reconstruction_dimension"          : 2,
     "subgraph_to_enrich" : {
-    "bi_or_unipartite"                  : "bi",                        # "bi" or "uni" or "any", note bipartite only has the "umis" filter type
-    "filter_type"                       : "umis",
+    "bi_or_unipartite"                  : "bi",             # "bi" or "uni" or "any", note bipartite only has the "umis" filter type
+    "filter_type"                       : "umis",           #"umis", "beads", or "any"
     "threshold"                        : [1],   
-    "gate_all_subgraphs"               : True,             #True = gate all subgraphs, False = choose specific below
+    "gate_all_subgraphs"               : True,             #True = modify all subgraphs, False = choose specific below
     "subgraph_number"                   : 6
     },   
     "dbscan_min_samples"                : [12],
@@ -308,37 +308,213 @@ vizualisation_args = {
     "subsample_distortion"      : False
 }
 '''
-    content_base_network_analysis = '''sample_name = "tonsil" # mouse_embryo , tonsil
 
-base_network_args = {
+    for content, str in zip([content_standard_processes, content_subgraph_modification, content_subgraph_analysis], ["config_standard_processes", "config_subgraph_modification", "config_subgraph_analysis"]):
+        # Write content to the file
+        if not os.path.isfile(f"Configs/{str}.py"):
+            with open(f"Configs/{str}.py", 'w') as file:
+                file.write(content)
+    #endregion
 
-    "ground_truth_file"        : "HumanTonsil_spatial.csv", # HumanTonsil_spatial ,  mouseembryo_spatial
-    "unfiltered_edge_file"     : "all_cells.csv", # only_spatial_cells, all_cells
+    #region configs Mouse embryonic unipartite analysis
+    content_standard_processes = """# Its very important the sample name is exactly correct, as it is used to find filepaths in essentially every step
+sample_name = "mouse_embryo" #mouse_embryo, tonsil, mouse_hippocampus
+
+preprocessing_args = {
+
+    "filepaths" : {
+                    "slidetags_output":             "df_whitelist_SRR11.txt", # df_whitelist_SRR11, df_whitelist_tonsil, df_whitelist_SRR07.txt
+                    "barcodes_to_keep":             "mouseembryo_barcodes.csv",    # mouseembryo_barcodes, barcodes_tonsil, barcodes_hippocampus.csv
+                    "barcodes_coordinates_file":    "mouseembryo_spatial.csv", #mouseembryo_spatial, HumanTonsil_spatial, mousehippocampus_spatial.csv
+                    "bc_exchange_path":             "3M-february-2018.txt",
+
+                    "output_file":                  "only_spatial_cells.csv" # generally "only_spatial_cells.csv" or "all_cells.csv"
+                    },
+    
+    "only_spatial_cells" : True
+    }
+
+filtering_args = {
+    "use_custom_input"              :   False,               #if this is false, it will automatically use the preprocessing output as filtering input
+                                                            # This will also be used in the subgraph_processing step, so it is required to got through here first
+    "processed_edge_files"          :   "SRR07_edge_list_sequences.csv" #this hould be in the "Input_files" folder
+                            , 
+    "nUMI_sum_per_bead_thresholds"  :   [2, 256], 
+    "n_connected_cells_thresholds"  :   [2, 256], 
+    "per_edge_nUMI_thresholds"      :   1,    
+    "include_N_beads"               :   False                    # Include or not include beads with an N in the sequence
+    }
+
+subgraph_processing_args_filtering = {
+    "bi_or_unipartite"              :"uni",                         # "bi" or "uni" or "both"
+
+    "minimum_subgraph_size"         :50               ,             #recommended to keep above 15 to ensure reconstruction quality 
+    # !!!WARNING!!! If you change this, all reconstructions need be reconstructed or manually renamed again due to it also changing subgraph numbering
+    
+    "numi_filters_bi"               :[],
+    
+    "nbead_filters_uni"             :[1,2,3,4,5,6,7,8,9,10],
+    "numi_filters_uni"              :[]
+
+}
+
+reconstruction_args = {
+    "reconstruction_dimension"          : 2,
+    "manual_reconstruction"             : False,                     #if True, Only the edgelist below will be reconstructed
+    "manual_reconstruction_edgelist"    : "test.csv",            #full path of edgelist to reconstruct, it has to be in the right place in the STRND structure
+    #-----------------------------
+    "reconstructions_per_edgelist"      : 1,
+    "reconstruct_all"                   : False,                      #if true will reconstruct all subgraphs of all filtering thresholds generated by this set of total configs
+    "weighted_reconstruction"           : False,
+    
+    "bi_or_unipartite"                  : "uni",                         # "bi" or "uni" or "any", note bipartite only has the "umis" filter type
+    "filter_type"                       : "beads",                    #"umis", "beads", or "any"
+    
+    "all_thresholds"                    : False ,                      
+    "thresholds"                        : [4,5,6,7,8,9,10],
+    
+    "which_subgraphs"                   : "all",    #"all", "biggest", or "specify". specify means the specific subgraph number, starts at 1
+    "specific_subgraph_number"          : 3,
+    "empty_strnd_folders"               : True           #This option if true deletes files in the edgelists and reconstructed positions in the STRND strucutre to prevent file confusions
+}
+    """
+    content_subgraph_modification = '''sample_name = "mouse_embryo" # mouse_embryo , tonsil
+
+file_localization_args = {
+
+    "ground_truth_file"   :"mouseembryo_spatial.csv",  # HumanTonsil_spatial ,  mouseembryo_spatial
+    "unfiltered_edge_file"     : "only_spatial_cells.csv", # generally "only_spatial_cells.csv" or "all_cells.csv"
     "run_parameters"           : {  
-        "nUMI_sum_per_bead_thresholds"  :   [2, 1500], 
-        "n_connected_cells_thresholds"  :   [2, 1500], 
+        "nUMI_sum_per_bead_thresholds"  :   [2, 256], 
+        "n_connected_cells_thresholds"  :   [2, 256], 
         "per_edge_nUMI_thresholds"      :   1,    
                                     }
 
     }
 
-spatial_coherence_args = {
-    "network_type"              :"bi",
-    "filter_type"               :"umis",
-    "min_subgraph_size_allowed" : 200
+# This set of configs controls the enriching where edges are taken from other edgelists of the same typ but at lower filtering values
+simple_subgraph_enriching_args = {
+    "subgraph_to_enrich" : {
+    "bi_or_unipartite"                  : "uni",                        # "bi" or "uni" or "any", note bipartite only has the "umis" filter type
+    "filter_type"                       : "beads",                    #"umis", "beads", or "any"
+    "threshold"                        : [6, 7, 8, 9, 10],
+    "enrich_all_subgraphs"               : True,             #True = enrich all subgraphs, False = choose specific below
+    "subgraph_number"                   : 6
+    
+    },
+    
+    "enriching_sources" :{
+        "use_same_type"                 : True,                
+        "thresholds"                    : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],    
+    },
+    "reconstruct"                       : True,
+    "reconstruction_dimension"          : 3,
+    "reconstruct_n_times"               : 1,
+    "empty_strnd_folders"               : True 
 }
-visualization_args = {
-    "color_set"                     : "colors_mouse_embryo",
-    "distance_analysis_thresholds"  : [1, 2, 3, 4, 5, 6, 7],
-    "save_to_image_format"          : "png",
-    "show_plots"                    :True
+
+# This type of subgraph modification entails reconstructing the subgraph first, followed by removing edges above a certain length in the reconstruction
+# and then re-reconstructing the subgraph
+# NOTE: This requires having reconstructed the subgraph at least once and put it through cursory analysis which showed a population 
+# of short, presumed spatially formed edges
+perform_distance_gated_double_reconstruction ={
+    "reconstruction_dimension"          : 2,
+    "subgraph_to_enrich" : {
+    "bi_or_unipartite"                  : "bi",                        # "bi" or "uni" or "any", note bipartite only has the "umis" filter type
+    "filter_type"                       : "umis",                    #"umis", "beads", or "any"
+    "threshold"                        : [1],
+    "gate_percentiles"                   : [0.999],        #standard: 0.999, which percentile of the first gaussian should be used as the upper allowed limit of edge distances
+    "recursive_gating"                  : False,        # if true perform the gating not only on base data but also edgeslists that have already been gated           
+    "gate_all_subgraphs"               : True,             #True = gate all subgraphs, False = choose specific below
+    "subgraph_number"                   : 6,
+    },
+    "re_reconstruction_args": {
+            "reconstruction_dimension"          : 2,    
+            "reconstruct_n_times"               : 1,   # Recommmended to be at least 5 for deeper analysis
+            "empty_strnd_folders"               : True
+    }
+    
+} 
+
+perform_dbscan_edge_filtering = {
+    "reconstruction_dimension"          : 2,
+    "subgraph_to_enrich" : {
+    "bi_or_unipartite"                  : "bi",                        # "bi" or "uni" or "any", note bipartite only has the "umis" filter type
+    "filter_type"                       : "umis",           #"umis", "beads", or "any"
+    "threshold"                        : [1],   
+    "gate_all_subgraphs"               : True,             #True = gate all subgraphs, False = choose specific below
+    "subgraph_number"                   : 6
+    },   
+    "dbscan_min_samples"                : [12],
+    "dbscan_eps_percentages"             : [5],  
+    "generate_pseudocells"              :True,
+    "compensate_zero_clusters"          :False,    
+    "re_reconstruction_args": {
+            "reconstruction_dimension"          : 2,    
+            "reconstruct_n_times"               : 1,   # Recommmended to be at least 5 for deeper analysis
+            "empty_strnd_folders"               : True
+    }
 }'''
-    #endregion
-    for content, str in zip([content_standard_processes, content_subgraph_modification, content_subgraph_analysis, content_base_network_analysis], ["config_standard_processes", "config_subgraph_modification", "config_subgraph_analysis", "config_base_network_analysis"]):
+
+    content_subgraph_analysis = '''sample_name = "mouse_embryo" # mouse_embryo , tonsil
+
+base_network_args = {
+
+    "ground_truth_file"                 : "mouseembryo_spatial.csv", # HumanTonsil_spatial ,  mouseembryo_spatial
+    "unfiltered_edge_file"              : "only_spatial_cells.csv", # only_spatial_cells, all_cells
+    "run_parameters"           : {  
+        "nUMI_sum_per_bead_thresholds"  :   [2, 256], 
+        "n_connected_cells_thresholds"  :   [2, 256], 
+        "per_edge_nUMI_thresholds"      :   1,    
+                                    }
+
+    }
+
+predicted_cell_types_file = None
+
+filter_analysis_args = {
+    "reconstruction_dimension"  : 2,
+    "network_type"              : "uni", 
+    "filter"                    : "beads",
+    "analyse_all_thresholds"    : False,
+    "thresholds_to_analyse"     : [4,5,6,7,8,9,10] # of not true, choose thresholds
+}
+
+subgraph_to_analyse = {
+    "all_subgraphs"             : False       ,  
+    "subgraph_number"           : 1       ,
+    "knn_neighbours"            : 15         ,
+    "minimum_subgraph_size"     : 10,
+    "regenerate_detailed_edges" : False,
+    "regenerate_summary_files"  : False,
+    "gating_threshold"          : None, #"pseudo=False", #"pseudo=False", # None, all, dbscan, or a another indentifier as long as it is in the file name such as pseudo=False
+    "include_recursively_gated" : False, 
+    "include_ungated"           : True
+    }
+
+plot_modification = False
+modification_type = "dbscan"  #gated, enriched, dbscan
+
+vizualisation_args = {
+    "how_many_reconstructions"  : "all",                # number or "all" if there are multiple reconstructions, how many should be plotted
+    "reconstruction_type"       : "recon", #recon, distortion, morphed_recon, or morphed_distortion
+    "color_scheme"              : "cell_type",       # cell_type, vertical, horizontal, radius, knn, distortion, image
+    "colormap"                  : "magma_r",     #Any matplotlib colormap, recommend viridis or tab10
+    "colours"                   : "mouse_embryo",
+
+    "save_to_image_format"      : "png",
+    "show_plots"                : True,               #having lots of plots can be memory limited, depending on their complexity
+    "include_edges"             : False,
+    "subsample_distortion"      : False
+}
+'''
+
+    for content, str in zip([content_standard_processes, content_subgraph_modification, content_subgraph_analysis], ["config_standard_processes_mouse_embryo_uni", "config_subgraph_modification_mouse_embryo_uni", "config_subgraph_analysis_mouse_embryo_uni"]):
         # Write content to the file
         if not os.path.isfile(f"Configs/{str}.py"):
             with open(f"Configs/{str}.py", 'w') as file:
                 file.write(content)
+    #endregion
 
 def dictRandomcellColors(nucleus_coordinates):
     '''

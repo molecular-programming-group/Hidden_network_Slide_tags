@@ -1707,11 +1707,13 @@ def initialize_post_subgraph_analysis(config, initial = False):
         return config
     
     config.subgraph_location = f"{config.subgraph_base_location}/{config.filter_analysis_args.network_type}-{config.filter_analysis_args.filter}_{config.subgraph_to_analyse.threshold}"
-    if config.subgraph_to_analyse.all_subgraphs:        
-        config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f]
-    else:
-        config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f and f"subgraph_{config.subgraph_to_analyse.subgraph_number}_" in f]
-
+    try:
+        if config.subgraph_to_analyse.all_subgraphs:        
+            config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f]
+        else:
+            config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f and f"subgraph_{config.subgraph_to_analyse.subgraph_number}_" in f]
+    except:
+        config.all_base_subgraph_files = []
     config.all_base_subgraph_files = [file for file in config.all_base_subgraph_files if int(re.search(r"N=(\d+)", file).group(1))>=config.subgraph_to_analyse.minimum_subgraph_size]
     if config.all_base_subgraph_files == []:
         print("No subgraphs found, nothing to analyze")
@@ -1723,7 +1725,7 @@ def initialize_post_subgraph_analysis(config, initial = False):
         else:
             print(f"Analyse all thresholds: {config.filter_analysis_args.analyse_all_thresholds}")
         
-        if not self.config.subgraph_to_analyse.all_subgraphs:
+        if not config.subgraph_to_analyse.all_subgraphs:
             print(f"Analyse all subgraphs: {config.subgraph_to_analyse.all_subgraphs}")
         else:
             print(f"Subgraph to analyse{config.subgraph_to_analyse.subgraph_number}")
@@ -1755,7 +1757,7 @@ def analyze_subgraph_enrichment(config):
 
         all_subgraphs.subgraphs.append(subgraph)
     
-    return subgraph
+
     
 def initalize_files(config):
     from Utils import Pointcloud
