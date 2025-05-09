@@ -1,4 +1,3 @@
-__More updates coming soon, including biological analysis, input files, bugfixing, figure generation, ease of use, and annotation__
 
 # Setting up the environment and run a first-pass reconstruction
 
@@ -19,6 +18,15 @@ pip install network_spatial_coherence
 pip install alphamorph
 pip install notebook
 ```
+
+Data included in the repository are either publically available from the Russel et al. areticle, or generated from only publically available data. The bead barcodes of the tonsil sample, which is not publically available, has been replaced with synthetic, random barcodes.
+Since the preprocessed edgelists are available in the "intermediary_files", the first first part of raw edge file conversion of the preprocessing is not required to be ran, and that cell can therefore be skipped in the notebook.
+
+Before running the code, the 10X barcodes file "3M-february-2018.txt.gz" in the "Input_files" folder should be decompressed. This is required for the preprocessing, and can be done with for eaxample in bash running
+
+'''bash
+gunzip Input_files\3M-february-2018.txt.gz
+'''
 
 After setting up the environment, the inital processing and a first-pass reconstruction can be performed using the "Preprocessing.ipynb" notebook.
 Alternatively, the individual scripts can be run individually and the the order to run is:
