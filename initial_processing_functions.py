@@ -11,9 +11,13 @@ The input should be the output of Russel et al's
 def load_data(filepaths_dict): # load the data types required
 
     #load the slide-tags output
-    slidetags_output_edges = pd.read_table("Input_files/"+filepaths_dict.slidetags_output, sep = "\t")
-    slidetags_output_edges.drop("CB_SB", axis = 1, inplace=True)                           
-    slidetags_output_edges = slidetags_output_edges.reindex(columns=["cell_bc_10x", "bead_bc", "nUMI"])
+    try:
+        slidetags_output_edges = pd.read_table("Input_files/"+filepaths_dict.slidetags_output, sep = "\t")
+        slidetags_output_edges.drop("CB_SB", axis = 1, inplace=True)                           
+        slidetags_output_edges = slidetags_output_edges.reindex(columns=["cell_bc_10x", "bead_bc", "nUMI"])
+    except FileNotFoundError:
+        print("Slidetags input not found, checking for intermediary edgelists")
+        slidetags_output_edges = None
 
     #Used if you want to specify which barcodes to keep, if using the slide-tags barcodes file nothing will change in the edge file since that is done with the slide-tags pipeline
     CR_barcodes = pd.read_csv("Input_files/"+filepaths_dict.barcodes_to_keep, header=None, names=["bc"])
@@ -69,10 +73,21 @@ def perform_preprocessing(config):
     #Master function that does each step  one after the other and saves the final output to a csv file
     from Utils import ensure_directory, generate_barcode_idx_mapping
     ensure_directory(f"Intermediary_files/{config.sample_name}")
-    slidetags_output_edges, CR_barcodes, filtered_barcodes, exchange_df = load_data(config.preprocessing_args.filepaths)
-
-    swapped_edgefile = swap_paired_barcodes(slidetags_output_edges, exchange_df)
     
+    slidetags_output_edges, CR_barcodes, filtered_barcodes, exchange_df = load_data(config.preprocessing_args.filepaths)
+    
+    if slidetags_output_edges:
+        swapped_edgefile = swap_paired_barcodes(slidetags_output_edges, exchange_df)
+    else:
+        try: 
+            swapped_edgefile = pd.read_csv(f"intermediary_files/{config.sample_name}/{config.preprocessing_args.filepaths.output_file}")
+            generate_barcode_idx_mapping(config, swapped_edgefile)
+            return
+        except FileNotFoundError:
+            print("Found edgelist with synthetic bead barcodes")
+            swapped_edgefile = pd.read_csv(f"intermediary_files/{config.sample_name}/0")
+            generate_barcode_idx_mapping(config, swapped_edgefile)
+            return
     generate_barcode_idx_mapping(config, swapped_edgefile)
     Bad_cells_removed = filter_barcodes(swapped_edgefile, CR_barcodes, filtered_barcodes, config.preprocessing_args.only_spatial_cells)
 

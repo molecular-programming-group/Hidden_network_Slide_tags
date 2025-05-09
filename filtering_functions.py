@@ -11,8 +11,12 @@ def umi_sum_filtering(config):
     if config.filtering_args.use_custom_input:
         edge_list = pd.read_csv(f"Input_files/{config.filtering_args.processed_edge_files}", index_col = "Unnamed: 0")
     else:
-        edge_list = pd.read_csv(f"{config.sample_path}/{config.preprocessing_args.filepaths.output_file}")
-
+        try:
+            edge_list = pd.read_csv(f"{config.sample_path}/{config.preprocessing_args.filepaths.output_file}")
+        except FileNotFoundError:
+            
+            edge_list = pd.read_csv(f"{config.sample_path}/{config.preprocessing_args.filepaths.output_file[:-4]}_synthetic.csv")
+            print("Using synthetic bead barcodes")
     #This gives each cell and bead a number, this is used for later edgelists instead of whole barcodes
     from Utils import generate_barcode_idx_mapping
     generate_barcode_idx_mapping(config, edge_list)
@@ -178,7 +182,7 @@ def perform_filtering(config):
     print(edgelist)
     edgelist = per_edge_umi_filtering(config)
     print(edgelist)
-    if config.subgraph_processing_args_filtering.bi_or_unipartite =="uni": # THese two are quite slow, and are therefore not performed if the unipartite network is not of interest
+    if config.subgraph_processing_args_filtering.bi_or_unipartite =="uni": # These two are quite slow, and are therefore not performed if the unipartite network is not of interest
         mtx = generate_bead_cell_weight_matrix(config, edgelist)
         # print(mtx)
         mtx1, mtx2 = convert_bead_cell_to_cell_cell(config, mtx)

@@ -628,6 +628,7 @@ def ensure_subgraph_filtering_directory(config, filter_type="test", threshold=1,
 def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthetic_sequences.csv"):
     '''
     This function takes a cell-bead edgelist and converts each barcode to a random synthetic barcode, keeping all properties except the barcodes themselves
+    Notably also preserves if there was an N or not in the sequence, turning the first base into "N" if there was
     '''
     import pandas as pd
     import random
@@ -647,9 +648,18 @@ def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthe
     barcode_length = len(original_beads[0])
 
     # Helper to generate a random barcode
-    def generate_random_barcode(existing_barcodes):
+    def generate_random_barcode(existing_barcodes, template):
         while True:
-            barcode = ''.join(random.choices(new_bases, k=barcode_length))
+            # If 'N' is present in the original barcode, force first base to be 'N'
+            if 'N' in template:
+                first_base = 'N'
+            else:
+                first_base = random.choice(new_bases)
+
+            # Generate the rest of the barcode randomly
+            rest = ''.join(random.choice(new_bases) for _ in range(len(template) - 1))
+            barcode = first_base + rest
+
             if barcode not in existing_barcodes:
                 return barcode
 
@@ -658,10 +668,10 @@ def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthe
     used_barcodes = set(cell_barcodes)  # Already used barcodes (to avoid collisions)
 
     for old_bc in original_beads:
-        new_bc = generate_random_barcode(used_barcodes)
+        new_bc = generate_random_barcode(used_barcodes, old_bc)
         new_barcode_map[old_bc] = new_bc
         used_barcodes.add(new_bc)
 
     # Apply mapping to bead_bc column
     df['bead_bc'] = df['bead_bc'].map(new_barcode_map)
-    df.to_csv(f"{destination_name}")
+    df.to_csv(f"{destination_name}", index = False)
