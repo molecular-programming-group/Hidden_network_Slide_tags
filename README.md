@@ -24,10 +24,9 @@ Since the preprocessed edgelists are available in the "intermediary_files", the 
 
 Before running the code, the 10X barcodes file "3M-february-2018.txt.gz" in the "Input_files" folder should be decompressed. This is required for the preprocessing, and can be done with for eaxample in bash running
 
-'''bash
+```bash
 gunzip Input_files\3M-february-2018.txt.gz
-'''
-
+```
 After setting up the environment, the inital processing and a first-pass reconstruction can be performed using the "Preprocessing.ipynb" notebook.
 Alternatively, the individual scripts can be run individually and the the order to run is:
 1. Utils.py
@@ -65,9 +64,9 @@ Mouse data sets are also publically available including sequencing data.
 Mouse sequencing data. https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE244355
 
 The R environment can be recreated using "renv", running the slidetags-network.Rproj will activate the inital renv, and subsequently executing the command below will install required packages 
-'''R
+```R
 renv::restore()
-'''
+```
 
 Then open and execute the "Slide-tags_HuTonsil_snData_part1.qmd", following which the squidpy notebook "slidetags_tonsil_analysis_assayData.ipynb" should be executed by first creating the conda environment for the .yml in the "Spatial_biology_analysis_R_squidpy" folder and choosing it as the notebook kernel:
 
