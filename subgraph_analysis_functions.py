@@ -940,6 +940,7 @@ class subgraphToAnalyse():
                 # Determine color based on scheme
                 if clr_scheme == "cell_type":
                     color = self.colors[cell_type]
+                    color ="w"
                 elif clr_scheme == "vertical":
                     low_on_bottom = False
                     color = colormap(y_norm(gt_point["y"]))
@@ -968,7 +969,9 @@ class subgraphToAnalyse():
                     cells_no_gt["x"].append(x)
                     cells_no_gt["y"].append(y)
                     cells_no_gt["z"].append(z)
-                    cells_no_gt["color"].append("gray")
+                    
+                    cells_no_gt["color"].append("w")
+
                     cells_no_gt["size"].append(size*0.5)
                 elif len(node_bc)!=cell_bc_length:
                     # Append data for nodes with a barcode of a different length i.e beads
@@ -978,10 +981,17 @@ class subgraphToAnalyse():
                     data_no_gt["color"].append("w")
                     data_no_gt["size"].append(1)
                 else: #This will be unknown cells
+                    coloring = self.reconstruction_summary.copy().set_index("node_bc")
+                    check_if_known_cells = coloring.loc[node_bc, "node_type"]
+
+                    if check_if_known_cells != "unknown_cell":
+                        cells_no_gt["color"].append(self.colors[check_if_known_cells])
+                    else:
+                        cells_no_gt["color"].append("gray")
                     cells_no_gt["x"].append(x)
                     cells_no_gt["y"].append(y)
                     cells_no_gt["z"].append(z)
-                    cells_no_gt["color"].append("lightgray")
+                    # cells_no_gt["color"].append("gray")
                     cells_no_gt["size"].append(size*0.5)
 
         # Used for the titles
@@ -1768,7 +1778,11 @@ def initalize_files(config):
     config.files_location = f"Intermediary_files/{config.sample_name}/run={config.base_network_args.unfiltered_edge_file[:-4]}_filters=numi{nUMI_thresholds[0]}-{nUMI_thresholds[1]}_nconn{n_connections_thresholds[0]}-{n_connections_thresholds[1]}_w{per_edge_weight_threshold}"
    
     config.ground_truth_df = pd.read_csv(f"Input_files/{config.base_network_args.ground_truth_file}")
-    config.gt_points = Pointcloud(config.ground_truth_df, input_type="GT")
+    if config.sample_name == "new_paper_cr":
+        ipt="bead_only"
+    else:
+        ipt ="GT"
+    config.gt_points = Pointcloud(config.ground_truth_df, input_type=ipt)
     config.idx_to_bc = pd.read_csv(f"Intermediary_files/{config.sample_name}/barcode_to_index_mapping_all.csv")
     config.raw_edge_file = f"Intermediary_files/{config.sample_name}/{config.base_network_args.unfiltered_edge_file}"
     try:
@@ -1801,5 +1815,5 @@ if __name__== "__main__":
     from Utils import ConfigLoader
 
     #config_subgraph_analysis_mouse_hippocampus, config_subgraph_analysis_mouse_embryo, config_subgraph_analysis_tonsil, config_analysis, config_subgraph_analysis
-    config = ConfigLoader('config_subgraph_analysis.py')
+    config = ConfigLoader('config_subgraph_analysis_tonsil.py')
     perform_analysis_actions(config)

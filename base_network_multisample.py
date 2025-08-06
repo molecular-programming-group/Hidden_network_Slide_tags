@@ -4,9 +4,13 @@ import matplotlib.pyplot as plt
 from Utils import *
 import re
 import seaborn as sns
+import copy
 
 class groupedSamples():
     def __init__(self, all_samples, all_gt_positions):
+        while len(all_gt_positions) < len(all_samples):
+            all_gt_positions.append(None)
+
         self.samples = [analysisSample(sample, gt_positions) for sample, gt_positions in zip(all_samples, all_gt_positions)]
         self.load_sample_parameters()
         self.load_colors()
@@ -16,7 +20,8 @@ class groupedSamples():
         num_colors_needed = len(self)
         cmap = plt.cm.plasma
         self.colors = cmap(np.random.choice(np.arange(cmap.N), num_colors_needed, replace=False))
-        self.colors = [(243/255,147/255,0/255,1),(137/255, 75/255, 162/255, 1), (0/255,166/255,187/255,1)]
+        # self.colors = [(243/255,147/255,0/255,1),(137/255, 75/255, 162/255, 1), (0/255,166/255,187/255,1), (0/255,166/255,17/255,1), (0, 0, 0,1)]
+
         
     def load_sample_parameters(self):
         n_cells, n_beads, n_edges, n_umis, self.names = [], [], [], [], []
@@ -35,6 +40,9 @@ class groupedSamples():
         self.n_cells_gt, self.n_beads_gt, self.n_edges_gt, self.n_umis_gt = n_cells_gt, n_beads_gt, n_edges_gt, n_umis_gt
         self.load_colors()
     
+    def copy(self):
+        return copy.deepcopy(self)
+
     def __iter__(self):
         for sample in self.samples:
             yield sample
@@ -211,10 +219,23 @@ class groupedSamples():
         for i, sample in enumerate(self):
             ax_cells = axes[0]
             ax_beads = axes[1]
-            ax_cells.scatter(sample.cell_degree_dist[0], sample.cell_degree_dist[1], s = 4, label = f"{sample.name} N={sample.cell_degree_dist[1].sum()}", color = colors[i])
-            ax_cells.axvline(sample.mean_cell_degrees, label = f"mean {sample.mean_cell_degrees:.3f} ±{sample.std_cell_degrees:.3f}", color=colors[i])
-            ax_beads.scatter(sample.bead_degree_dist[0], sample.bead_degree_dist[1], s = 4, label = f"{sample.name} N={sample.bead_degree_dist[1].sum()}", color = colors[i])
-            ax_beads.axvline(sample.mean_bead_degrees, label = f"mean degree: {sample.mean_bead_degrees:.3f}", color=colors[i])
+            point_color = colors[i]
+            size = 4
+            if sample.modified:
+                if "nUMI" in sample.name:
+                    size = 1
+                    point_color = "g"
+                if "beads" in sample.name:
+                    size = 1
+                    point_color = "r"
+                if "edges" in sample.name:
+                    size = 1
+                    point_color = "m"
+
+            ax_cells.scatter(sample.cell_degree_dist[0], sample.cell_degree_dist[1], s = size, label = f"{sample.name} N={sample.cell_degree_dist[1].sum()}", color = point_color)
+            ax_cells.axvline(sample.mean_cell_degrees, label = f"mean {sample.mean_cell_degrees:.3f} ±{sample.std_cell_degrees:.3f}", color=point_color)
+            ax_beads.scatter(sample.bead_degree_dist[0], sample.bead_degree_dist[1], s = size, label = f"{sample.name} N={sample.bead_degree_dist[1].sum()}", color = point_color)
+            ax_beads.axvline(sample.mean_bead_degrees, label = f"mean degree: {sample.mean_bead_degrees:.3f}", color=point_color)
             
             cell_degrees = sample.cell_degrees[1]  # <- Make sure this exists as a list or array of degree values
             # Remove zeros (lognorm requires positive values)
@@ -257,6 +278,7 @@ class groupedSamples():
         fig.savefig(f"Images/degree_distributions.{format}", format = format)
 
     def plot_degrees_per_cell_type(self, format="png"):
+        import matplotlib.ticker as mtick
         for sample in self:
             print(sample.cell_degrees)
             print(sample.cell_degrees[0])
@@ -284,6 +306,8 @@ class groupedSamples():
             plt.xlabel("Cell Type")
             plt.ylabel("Degree")
             plt.title(f"Degree Distribution per Cell Type {sample.name}")
+
+
             plt.tight_layout()
             # plt.show()
         
@@ -308,7 +332,10 @@ class groupedSamples():
             if values_gt[0]:
                 if len(self.names) != len(values_gt):
                     values_gt = values_gt[:len(self.names)-1]
-                ax.bar(self.names, values_gt, color = "gray", alpha = 0.5)
+                try:
+                    ax.bar(self.names, values_gt, color = "gray", alpha = 0.5)
+                except:
+                    pass
             ax.set_box_aspect(1)
             ax.set_title(title)
             ax.set_ylabel("Count")
@@ -322,14 +349,15 @@ class groupedSamples():
                 ax.text(
                     p.get_x() + p.get_width() / 2,  # X-position (center of the bar)
                     p.get_height() + 0.5,           # Y-position (slightly above the bar)
-                    f'{p.get_height():,.0f}',        # Text (rounded bar height)
+                    f'{p.get_height()/1000:,.3f}k',        # Text (rounded bar height)
                     ha='center', va='bottom',       # Center alignment
                     fontsize=10
                 )
+                
         plt.tight_layout()
         fig.savefig(f"Images/sample_properties.{format}", format = format)
 
-    def generate_bead_downsampled_samples(self, target_sample = None, fraction = 100):
+    def generate_bead_downsampled_samples(self, target_sample = None, fraction = 100, repeats = 1):
         if not target_sample:
             # target_sample = self.find_lowest(target_type)
             target_sample = "mouse_embryo"
@@ -338,32 +366,66 @@ class groupedSamples():
             # print(sample.edges)
             if sample.name == target_sample:
                 target_number = len(sample.edges["bead_bc"].unique())
+        samples = self.copy()
+        for n in range(repeats):
+            for sample in samples:
+                if sample.modified:
+                    continue
+                # print(sample.edges["nUMI"])
+                numbers = sample.edges["bead_bc"].unique()
+                total_number = len(numbers)
+                diff = total_number-target_number
+                if diff <1:
+                    continue
+                diff = round(diff*fraction/100)
+                np.random.seed(42+n)
+                modified_edges = sample.edges.copy()
+                bead_bc_to_remove = np.random.choice(numbers, diff, replace=False)
 
-        for sample in self:
-            if sample.modified:
-                continue
-            # print(sample.edges["nUMI"])
-            print(sample.edges)
-            numbers = sample.edges["bead_bc"].unique()
+                modified_edges = modified_edges[~modified_edges["bead_bc"].isin(bead_bc_to_remove)]
 
-            total_number = len(numbers)
-            diff = total_number-target_number
-            print(diff, sample.name)
-            if diff <1:
-                continue
-            diff = round(diff*fraction/100)
-            np.random.seed(42)
-            modified_edges = sample.edges.copy()
-            bead_bc_to_remove = np.random.choice(numbers, diff, replace=False)
+                modified_edges.to_csv(f"Intermediary_files/{sample.name}/modified_beads_{fraction}_{target_sample}_{n}.csv", index = False)
+                modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_modified_beads_{fraction}_{n}", gt_positions=sample.gt_positions_file, specific_edgelist=f"modified_beads_{fraction}_{target_sample}_{n}.csv")
+                self.samples.append(modified_sample)
+                self.load_sample_parameters()
 
-            modified_edges = modified_edges[~modified_edges["bead_bc"].isin(bead_bc_to_remove)]
+    def generate_cell_downsampled_samples(self, target_sample = None, fraction = 100, repeats = 1, target = None):
+        if not target_sample:
+            # target_sample = self.find_lowest(target_type)
+            target_sample = "mouse_embryo"
 
-            modified_edges.to_csv(f"Intermediary_files/{sample.name}/modified_beads_{fraction}.csv", index = False)
-            modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_modified_beads_{fraction}", gt_positions=sample.gt_positions_file, specific_edgelist=f"modified_beads_{fraction}.csv")
-            self.samples.append(modified_sample)
-            self.load_sample_parameters()
+        for i, sample in enumerate(self):
+            # print(sample.edges)
+            if sample.name == target_sample:
+                target_number = len(sample.edges["cell_bc_10x"].unique())
+        if target:
+            target_number=target
+            target_sample="None"
+            fraction = target
 
-    def generate_edges_downsampled_samples(self, target_sample = None, fraction = 100):
+        samples = self.copy()
+        for n in range(repeats):
+            for sample in samples:
+                if sample.modified:
+                    continue
+                # print(sample.edges["nUMI"])
+                numbers = sample.edges["cell_bc_10x"].unique()
+                total_number = len(numbers)
+                diff = total_number-target_number
+                if diff <1:
+                    continue
+                if not target:
+                    diff = round(diff*fraction/100)
+                np.random.seed(42+n)
+                modified_edges = sample.edges.copy()
+                cell_bc_to_remove = np.random.choice(numbers, diff, replace=False)
+                modified_edges = modified_edges[~modified_edges["cell_bc_10x"].isin(cell_bc_to_remove)]
+                modified_edges.to_csv(f"Intermediary_files/{sample.name}/modified_cells_{fraction}_{target_sample}_{n}.csv", index = False)
+                modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_modified_cells_{fraction}_{target_sample}_{n}", gt_positions=sample.gt_positions_file, specific_edgelist=f"modified_cells_{fraction}_{target_sample}_{n}.csv")
+                self.samples.append(modified_sample)
+                self.load_sample_parameters()
+
+    def generate_edges_downsampled_samples(self, target_sample = None, fraction = 100, repeats = 1):
         if not target_sample:
             # target_sample = self.find_lowest(target_type)
             target_sample = "mouse_embryo"
@@ -372,31 +434,28 @@ class groupedSamples():
             # print(sample.edges)
             if sample.name == target_sample:
                 target_number = len(sample.edges)
-        for sample in self:
-            if sample.modified:
-                continue
-            # print(sample.edges["nUMI"])
-            numbers = sample.edges
-            total_number = len(numbers)
-            diff = total_number-target_number
-            print(diff, sample.name)
-            print(total_number, target_number, diff, "oöiasdf")
-            if diff <1:
-                continue
-            diff = round(diff*fraction/100)
-            np.random.seed(42)
-            idx = np.random.choice(total_number, diff, replace=False)
-            print(len(idx), diff, "#huh")
-            print(idx)
-            modified_edges = sample.edges.copy()
-            modified_edges.drop(idx, inplace=True)
-            ensure_directory(f"Intermediary_files/{sample.name}")
-            modified_edges.to_csv(f"Intermediary_files/{sample.name}/modified_edges_{fraction}.csv", index = False)
-            modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_modified_edges_{fraction}", gt_positions=sample.gt_positions_file, specific_edgelist=f"modified_edges_{fraction}.csv")
-            self.samples.append(modified_sample)
-            self.load_sample_parameters()
+        for n in range(repeats):
+            np.random.seed(42+n)
+            for sample in self:
+                if sample.modified:
+                    continue
+                # print(sample.edges["nUMI"])
+                numbers = sample.edges.copy()
+                total_number = len(numbers)
+                diff = total_number-target_number
+                if diff <1:
+                    continue
+                diff = round(diff*fraction/100)
+                idx = np.random.choice(total_number, diff, replace=False)
+                modified_edges = sample.edges.copy()
+                modified_edges.drop(idx, inplace=True)
+                ensure_directory(f"Intermediary_files/{sample.name}")
+                modified_edges.to_csv(f"Intermediary_files/{sample.name}/modified_edges_{fraction}_{target_sample}_{n}.csv", index = False)
+                modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_modified_edges_{fraction}_{target_sample}_{n}", gt_positions=sample.gt_positions_file, specific_edgelist=f"modified_edges_{fraction}_{target_sample}_{n}.csv")
+                self.samples.append(modified_sample)
+                self.load_sample_parameters()
 
-    def generate_nUMI_downsampled_samples(self, target_sample = None, fraction = 100):
+    def generate_nUMI_downsampled_samples(self, target_sample = None, fraction = 100, repeats = 1):
         if not target_sample:
             # target_sample = self.find_lowest(target_type)
             target_sample = "mouse_embryo"
@@ -405,44 +464,44 @@ class groupedSamples():
             # print(sample.edges)
             if sample.name == target_sample:
                 target_number = sample.edges["nUMI"].sum()
-        
-        for sample in self:
-            if sample.modified:
-                continue
-            # print(sample.edges["nUMI"])
-            numbers = sample.edges["nUMI"].values
-            total_number = sum(numbers)
-            diff = total_number-target_number
-            print(diff, sample.name)
-            if diff <1:
-                continue
-            index_pool = np.repeat(np.arange(len(numbers)), numbers)
-            diff = round(diff*fraction/100)
-            print(index_pool)
-            for i in range(diff):
-                reduced = False
-                while not reduced:
-                    idx = np.random.choice(index_pool)  # Random index
-                    if numbers[idx] >0:
-                        numbers[idx] -= 1  # Reduce by 1
-                        reduced = True
-                    # print(i)
-
-            modified_edges = sample.edges.copy()
-            modified_edges["nUMI"] = numbers
-            reduced_edges = modified_edges.loc[modified_edges["nUMI"]!=0, :]
-            reduced_edges.to_csv(f"Intermediary_files/{sample.name}/modified_nUMI_{fraction}.csv", index = False)
-            modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_modified_nUMI_{fraction}", gt_positions=sample.gt_positions_file, specific_edgelist=f"modified_nUMI_{fraction}.csv")
-            self.samples.append(modified_sample)
-            self.load_sample_parameters()
-
+        samples = self.copy()
+        for n in range(repeats):
+            np.random.seed(42+n)
+            for sample in samples:
+                if sample.modified:
+                    continue
+                # print(sample.edges["nUMI"])
+                numbers = sample.edges["nUMI"].values.copy()
+                total_number = sum(numbers)
+                diff = total_number-target_number
+                # print(diff, sample.name)
+                if diff <1:
+                    continue
+                index_pool = np.repeat(np.arange(len(numbers)), numbers)
+                diff = round(diff*fraction/100)
+                # print(index_pool)
+                for i in range(diff):
+                    reduced = False
+                    while not reduced:
+                        idx = np.random.choice(index_pool)  # Random index
+                        if numbers[idx] >0:
+                            numbers[idx] -= 1  # Reduce by 1
+                            reduced = True
+                        # print(i)
+                modified_edges = sample.edges.copy(deep = True)
+                modified_edges["nUMI"] = numbers
+                reduced_edges = modified_edges.loc[modified_edges["nUMI"]!=0, :]
+                reduced_edges.to_csv(f"Intermediary_files/{sample.name}/modified_nUMI_{fraction}_{target_sample}_{n}.csv", index = False)
+                modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_modified_nUMI_{fraction}_{target_sample}_{n}", gt_positions=sample.gt_positions_file, specific_edgelist=f"modified_nUMI_{fraction}_{target_sample}_{n}.csv")
+                self.samples.append(modified_sample)
+                self.load_sample_parameters()
         pass
-    def load_modified_samples(self):
+    def load_modified_samples(self, type = "modified"):
         import os
         for sample in self:
             if sample.name == "tonsil":
                 print(os.listdir(f"Intermediary_files/{sample.name}"))
-                modified_edgelists = [file for file in os.listdir(f"Intermediary_files/{sample.name}") if "modified" in file and ".csv" in file and "edges" in file]
+                modified_edgelists = [file for file in os.listdir(f"Intermediary_files/{sample.name}") if "modified" in file and ".csv" in file and type in file]
                 print(modified_edgelists)
                 for modification in modified_edgelists:
                     modified_sample = analysisSample(sample = sample.name, true_name = f"{sample.name}_{modification[:-4]}", gt_positions=sample.gt_positions_file, specific_edgelist=modification)
@@ -455,7 +514,7 @@ class groupedSamples():
 
 class analysisSample():
     def __init__(self, sample, gt_positions, specific_edgelist = "all_cells.csv", true_name = None):
-        print(sample)
+        print(specific_edgelist)
         self.name = sample
         self.edgelist_names = specific_edgelist
         
@@ -467,7 +526,7 @@ class analysisSample():
         except:
             specific_edgelist = "all_cells_synthetic.csv"
             self.edges = pd.read_csv(f"Intermediary_files/{sample}/{specific_edgelist}") 
-        if os.path.isfile(f"Intermediary_files/{sample}/only_spatial_cells.csv"):
+        if os.path.isfile(f"Intermediary_files/{sample}/only_spatial_cells.csv") and "modified" not in specific_edgelist:
             self.only_spatial_cells_edges = pd.read_csv(f"Intermediary_files/{sample}/only_spatial_cells.csv") 
         else:
             self.only_spatial_cells_edges = None
@@ -479,7 +538,7 @@ class analysisSample():
         self.n_beads = self.bead_degree_dist[1].sum()
         self.n_edges = len(self.edges)
         self.n_umis = self.edges["nUMI"].sum()
-        if self.only_spatial_cells_edges:
+        if self.only_spatial_cells_edges is not None and not self.only_spatial_cells_edges.empty:
             self.n_cells_gt = self.cell_degree_dist_gt[1].sum()
             self.n_beads_gt = self.bead_degree_dist_gt[1].sum()
             self.n_edges_gt = len(self.only_spatial_cells_edges)
@@ -528,19 +587,28 @@ class analysisSample():
 
 
     def load_gt_positions(self, gt_positions):
-        input_df  = pd.read_csv(f"Input_files/{gt_positions}")
-        self.barcodes = input_df["NAME"][1:]
-        if self.barcodes.iloc[0][-1] == "1":
-            self.barcodes = self.barcodes.str.replace(r'-1$', '', regex=True)
-        self.x_coords = input_df["X"][1:].astype("float")
-        self.y_coords = input_df["Y"][1:].astype("float")
-        self.cell_types = input_df["cell_type"][1:]
-        self.gt_df = pd.DataFrame({
-                            'x': self.x_coords,
-                            'y': self.y_coords,
-                            'cell_type': self.cell_types, 
-                            "barcode":self.barcodes
-                        }).set_index("barcode")
+        if not gt_positions:
+            self.gt_df = pd.DataFrame({
+                    'x': [],
+                    'y': [],
+                    'cell_type': [], 
+                    "barcode":[]
+                }).set_index("barcode")
+            print(self.gt_df)
+        else:
+            input_df  = pd.read_csv(f"Input_files/{gt_positions}")
+            self.barcodes = input_df["NAME"][1:]
+            if self.barcodes.iloc[0][-1] == "1":
+                self.barcodes = self.barcodes.str.replace(r'-1$', '', regex=True)
+            self.x_coords = input_df["X"][1:].astype("float")
+            self.y_coords = input_df["Y"][1:].astype("float")
+            self.cell_types = input_df["cell_type"][1:]
+            self.gt_df = pd.DataFrame({
+                                'x': self.x_coords,
+                                'y': self.y_coords,
+                                'cell_type': self.cell_types, 
+                                "barcode":self.barcodes
+                            }).set_index("barcode")
 
     def calculate_degrees(self):
         edges = self.edges
@@ -553,7 +621,7 @@ class analysisSample():
         self.cell_degree_dist = np.unique(self.cell_degrees[1], return_counts=True)
         
         edges = self.only_spatial_cells_edges
-        if edges:
+        if edges is not None and not edges.empty:
             self.bead_degrees_gt = np.unique(edges["bead_bc"], return_counts=True)
             self.mean_bead_degrees_gt = np.mean(self.bead_degrees_gt[1])
             self.bead_degree_dist_gt = np.unique(self.bead_degrees_gt[1], return_counts=True)
@@ -577,29 +645,40 @@ def initialize_samples(all_samples, all_sample_gt_positions):
 
 def perform_analysis_actions(sample_group:groupedSamples, image_format = "png"):
     sample_group.plot_degree_distributions(format = image_format)
-    # sample_group.plot_counts(format= image_format)
+    sample_group.plot_counts(format= image_format)
     # sample_group.plot_distributions_beads(format= image_format)
     # sample_group.plot_unipartite_edgelength_histogram(format = image_format)
     # sample_group.plot_degrees_per_cell_type(format=image_format)
     plt.show()
 if __name__== "__main__":
-    total_reads = [1059056528, 1044099392, 943979348]
-    total_grepped_reads = [75815144, 8163457, 12501927]
+    total_reads = [1059056528, 1044099392, 943979348, 6030529]
+    total_grepped_reads = [25944618, 8163457, 12501927, 3913285]
     # total_grepped_reads = [26408956, 12268026, 835345] #unipartite edge
     # all_samples = ["tonsil", "mouse_embryo", "mouse_hippocampus"]
     # all_sample_ground_truth_positions = ["HumanTonsil_spatial.csv", "mouseembryo_spatial.csv", "mousehippocampus_spatial.csv"]
     
-    all_samples = ["tonsil"]
-    all_sample_ground_truth_positions = ["HumanTonsil_spatial.csv"]
+    all_samples = ["tonsil", "mouse_embryo", "mouse_hippocampus", "melanoma", "melanoma_2"]
+    all_sample_ground_truth_positions = ["HumanTonsil_spatial.csv", "mouseembryo_spatial.csv", "mousehippocampus_spatial.csv", "HumanMelanomaMultiome_spatial.csv", "HumanMelanomaMultiome_spatial.csv"]
+    all_samples = ["tonsil", "melanoma", "melanoma_2", "tonsil_all"]
+    all_sample_ground_truth_positions = ["HumanTonsil_spatial.csv", "HumanMelanomaMultiome_spatial.csv", "HumanMelanomaMultiome_spatial.csv", "HumanTonsil_spatial.csv",]
+    all_samples = ["tonsil", "new_paper_cr"]
+    all_sample_ground_truth_positions = ["HumanTonsil_spatial.csv", "HumanMelanomaMultiome_spatial.csv"]
+    all_samples = ["tonsil", "mouse_embryo", "mouse_hippocampus", "new_paper_cr"]
+    all_sample_ground_truth_positions = ["HumanTonsil_spatial.csv", "HumanMelanomaMultiome_spatial.csv", "HumanMelanomaMultiome_spatial.csv", "HumanTonsil_spatial.csv"]
+    
+    # all_samples = ["tonsil", "mouse_embryo"]
+    # all_sample_ground_truth_positions = ["HumanTonsil_spatial.csv"]
+
 
     sample_group = initialize_samples(all_samples, all_sample_ground_truth_positions)
     sample_group.viable_reads = total_grepped_reads
     sample_group.total_reads = total_reads
-    for fraction in [125]:
-        # sample_group.generate_nUMI_downsampled_samples()
-        # sample_group.generate_edges_downsampled_samples(fraction = fraction)
-        # sample_group.generate_bead_downsampled_samples()
+    for fraction in [100]:
+        # sample_group.generate_nUMI_downsampled_samples(fraction = fraction, repeats = 5, target_sample = "mouse_hippocampus")
+        # sample_group.generate_edges_downsampled_samples(fraction = fraction, repeats = 5, target_sample = "mouse_hippocampus")
+        # sample_group.generate_bead_downsampled_samples(fraction = fraction, repeats = 5, target_sample = "mouse_hippocampus")
+        # sample_group.generate_cell_downsampled_samples(fraction = fraction, repeats = 5, target_sample = "mouse_hippocampus", target = 5000)
         pass
-    # sample_group.load_modified_samples()
+    # sample_group.load_modified_samples("cells")
     perform_analysis_actions(sample_group, image_format="pdf")
     

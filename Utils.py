@@ -13,14 +13,15 @@ class ConfigLoader:
     ''''
     This class takes a config file full of python dict structures and converts elements in dict and subdisct into attributes and subattributes instead for more readable config access
     '''
-    def __init__(self, config_module, config_folder= "Configs"):
+    def __init__(self, config_module, config_folder= "Configs", type="standard"):
         # Import the config module dynamically
         if config_folder:
             # Add the folder to sys.path temporarily
             config_folder_path = Path(config_folder).resolve()
             if str(config_folder_path) not in sys.path:
                 sys.path.insert(0, str(config_folder_path))
-
+        if type == "simulation":
+            config_folder_path = os.getcwd() + "/Simulation"
         try:
             # Import the config module dynamically
             config = importlib.import_module(config_module[:-3] if config_module.endswith('.py') else config_module)
@@ -72,7 +73,20 @@ class Pointcloud(): #This class is mainly used to save and process the ground tr
                                 'cell_type': self.cell_types, 
                                 "barcode":self.barcodes
                             }).set_index("barcode")
-
+        if input_type == "beads_only":
+            self.barcodes = input_df["barcode"]
+            if self.barcodes.iloc[0][-1] == "1":
+                self.barcodes = self.barcodes.str.replace(r'-1$', '', regex=True)
+            self.x_coords = input_df["xcoord"].astype("float")
+            self.y_coords = input_df["ycoord"].astype("float")
+            input_df["cell_type"] = "bead"
+            self.cell_types = input_df["cell_type"]
+            self.gt_df = pd.DataFrame({
+                                'x': self.x_coords,
+                                'y': self.y_coords,
+                                'cell_type': self.cell_types, 
+                                "barcode":self.barcodes
+                            }).set_index("barcode")
     def plot_points(self, ax=None, clr='blue', size = 10, alpha = 0.6, color_scheme=None):
         if ax is None:
             fig, ax = plt.subplots(figsize=(6, 6))  # Default to square plot if standalone
