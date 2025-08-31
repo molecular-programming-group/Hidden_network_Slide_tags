@@ -548,7 +548,7 @@ def replace_first_folder(filepath, new_folder):
     '''
     from pathlib import Path
     # Convert the filepath to a Path object
-    path = Path(filepath)
+    path = Path(filepath) 
     
     # Reconstruct the path with the new folder as the first part
     new_path = Path(new_folder, *path.parts[1:])
@@ -639,7 +639,7 @@ def ensure_subgraph_filtering_directory(config, filter_type="test", threshold=1,
     config.run_path = savepath
     return config
 
-def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthetic_sequences.csv"):
+def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthetic_sequences.csv", type="edges"):
     '''
     This function takes a cell-bead edgelist and converts each barcode to a random synthetic barcode, keeping all properties except the barcodes themselves
     Notably also preserves if there was an N or not in the sequence, turning the first base into "N" if there was
@@ -647,45 +647,55 @@ def real_to_synthetic_sequence_swap(file_name = None, destination_name = "synthe
     import pandas as pd
     import random
 
-    # Load your DataFrame
+    mapping_file = "synthetic_barcode_mapping.csv"
     df = pd.read_csv(file_name)
-    print(df)
+    if os.path.isfile(mapping_file):
+        barcode_map_df = pd.read_csv(mapping_file)
+        new_barcode_map = dict(zip(barcode_map_df['original_barcode'], barcode_map_df['new_barcode']))
+    else:
+        # Load your DataFrame
+        random.seed(42)
+        
+        # Define the "bases" for the new barcodes
+        new_bases = ['W', 'X', 'Y', 'Z']
 
-    # Define the "bases" for the new barcodes
-    new_bases = ['W', 'X', 'Y', 'Z']
+        # Get all unique barcodes
+        if type == "edges":
+            original_beads = df['bead_bc'].unique()
+            cell_barcodes = set(df['cell_bc_10x'].unique())
+        elif type =="recon":
+            original_beads = df.loc[df["node_type"]=="bead", "node_bc"].unique()
+            cell_barcodes = df.loc[df["node_type"]!="bead", "node_bc"].unique()
 
-    # Get all unique barcodes
-    original_beads = df['bead_bc'].unique()
-    cell_barcodes = set(df['cell_bc_10x'].unique())
+        barcode_length = len(original_beads[0])
 
-    # Barcode length (assuming all have the same length)
-    barcode_length = len(original_beads[0])
+        def generate_random_barcode(existing_barcodes, template):
+            while True:
+                if 'N' in template:
+                    first_base = 'N'
+                else:
+                    first_base = random.choice(new_bases)
+                rest = ''.join(random.choice(new_bases) for _ in range(len(template) - 1))
+                barcode = first_base + rest
+                if barcode not in existing_barcodes:
+                    return barcode
 
-    # Helper to generate a random barcode
-    def generate_random_barcode(existing_barcodes, template):
-        while True:
-            # If 'N' is present in the original barcode, force first base to be 'N'
-            if 'N' in template:
-                first_base = 'N'
-            else:
-                first_base = random.choice(new_bases)
+        new_barcode_map = {}
+        used_barcodes = set(cell_barcodes)
+        for old_bc in original_beads:
+            new_bc = generate_random_barcode(used_barcodes, old_bc)
+            new_barcode_map[old_bc] = new_bc
+            used_barcodes.add(new_bc)
 
-            # Generate the rest of the barcode randomly
-            rest = ''.join(random.choice(new_bases) for _ in range(len(template) - 1))
-            barcode = first_base + rest
+        barcode_map_df = pd.DataFrame(list(new_barcode_map.items()), columns=['original_barcode', 'new_barcode'])
+        barcode_map_df.to_csv(mapping_file, index=False)
 
-            if barcode not in existing_barcodes:
-                return barcode
-
-    # Mapping: original bead_bc -> new random barcode
-    new_barcode_map = {}
-    used_barcodes = set(cell_barcodes)  # Already used barcodes (to avoid collisions)
-
-    for old_bc in original_beads:
-        new_bc = generate_random_barcode(used_barcodes, old_bc)
-        new_barcode_map[old_bc] = new_bc
-        used_barcodes.add(new_bc)
 
     # Apply mapping to bead_bc column
-    df['bead_bc'] = df['bead_bc'].map(new_barcode_map)
+    if type == "edges":
+        df['bead_bc'] = df['bead_bc'].map(new_barcode_map)
+    elif type =="recon":
+        df.loc[df["node_type"]=="bead", "node_bc"] = df.loc[df["node_type"]=="bead", "node_bc"].map(new_barcode_map)  
+
+
     df.to_csv(f"{destination_name}", index = False)

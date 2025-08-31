@@ -15,6 +15,8 @@ from pathlib import Path
 from math import log10, floor, ceil
 from typing import List
 from alphamorph.apply import alphamorph_apply
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+import matplotlib.font_manager as fm
 
 
 
@@ -26,6 +28,7 @@ class subgraphCollection():
 
     def add_subgraph(self, subgraph):
         pass
+
     def get_subgraph_numbers(self):
         subgraph_numbers = []
         for subgraph in self.subgraphs:
@@ -152,6 +155,7 @@ class subgraphToAnalyse():
 
         if not self.unenriched_flag:
             self.top_n_reconstructions = 1
+
             if self.config.modification_type =="enriched":
                 print("Finding enriched subgraphs")
                 self.enriched_edgelists_location = f"{self.edgelist_location}/{self.name[:-4]}_enriched"
@@ -869,7 +873,17 @@ class subgraphToAnalyse():
         # except:
         #     print("Defaulting to cell coloring in for ground truth") # This should not be needed, but acts as asafety catch
         #     colors = [self.colors[cell_type] for cell_type in cell_types]
+        scalebar = AnchoredSizeBar(ax.transData,
+                           500,                # length of the bar in data units
+                           '500 units',        # label
+                           'lower right',     # location
+                           pad=0.5,
+                           color='black',
+                           frameon=False,
+                           size_vertical=0.5,
+                           fontproperties=fm.FontProperties(size=8))
 
+        ax.add_artist(scalebar)
         ax.scatter(x_values, y_values, c = colors, zorder = position,  s=size, edgecolor = "k", linewidths =0.3)
         ax.set_aspect("equal")
         if with_edges:
@@ -1023,7 +1037,18 @@ class subgraphToAnalyse():
                 ax.scatter(data_no_gt["x"], data_no_gt["y"], c = data_no_gt["color"], zorder = position-1, s=data_no_gt["size"], edgecolor = "k", linewidths =0.1, alpha = 0.6)
             ax.scatter(cells_no_gt["x"], cells_no_gt["y"], c = cells_no_gt["color"], zorder = position-1, s=cells_no_gt["size"], edgecolor = "k", linewidths =0.1)
             ax.scatter(data_with_gt_df["x"], data_with_gt_df["y"], c = data_with_gt_df["color"], zorder = position, s=data_with_gt_df["size"], edgecolor = "k", linewidths =0.3)
+        
+        scalebar = AnchoredSizeBar(ax.transData,
+                           500,                # length of the bar in data units
+                           '500 units',        # label
+                           'lower right',     # location
+                           pad=0.5,
+                           color='black',
+                           frameon=False,
+                           size_vertical=0.5,
+                           fontproperties=fm.FontProperties(size=8))
 
+        ax.add_artist(scalebar)
         if with_edges: # edges are generated with a separate functions in the form of a LineCollection
             edges = self.generate_plottable_edges(self.gt_positions, self.original_edgelist)
             ax.add_collection(edges)
@@ -1303,8 +1328,14 @@ class subgraphToAnalyse():
                 filename = f"{type}"
             full_save_path = f"{save_location}/{filename}.csv"
         elif self.is_modified_subgraph:
+
             filename = self.edgelist_location.rsplit("/", 1)[0]
             full_save_path = filename + ".csv"
+            if self.config.modification_type =="enriched" and self.is_modified_subgraph:
+                location = self.edgelist_location.rsplit("/", 2)[0]
+                filename = self.edgelist_location.rsplit("/", 1)[-1]
+                save_location = replace_first_folder(location, "Output_files") + f"_{self.reconstruction_dimension}D"
+                full_save_path = save_location + "/detailed_edgelist_" + filename
         else:
             filename = f"{type}_subgraph_{self.number}_N={self.n_nodes}"
             full_save_path = f"{save_location}/{filename}.csv"
@@ -1318,9 +1349,8 @@ class subgraphToAnalyse():
             else:
                 return False
 
-    def generate_detailed_edgefile(self, generate_new_file = False, save_type = ""):
+    def generate_detailed_edgefile(self, generate_new_file = False, save_type = "", modified = False):
         file_check = self.save_output_file(type = "detailed_edgelist", mode = "check")
-
         # If the file exists, do not regenerate it unless specfically told so
         if file_check and not generate_new_file:
             print("Found pre-generated detail edgelist")
@@ -1525,7 +1555,8 @@ class subgraphToAnalyse():
             if enrichedSubgraph.unenriched_flag:
                 print(f"No reconstruction available for subgraph {enrichedSubgraph.number} from filter {enrichedSubgraph.filtering_threshold} {self.config.modification_type} at w={enrichedSubgraph.enrichment_threshold}")
                 continue
-            enrichedSubgraph.generate_detailed_edgefile()
+
+            enrichedSubgraph.generate_detailed_edgefile(modified=True)
             if self.config.modification_type == "dbscan":
                 enrichedSubgraph.create_and_save_full_reconstruction_summary(save_type= f"full_reconstruction_summary_subgraph_{self.number}_N={self.n_nodes}_{self.config.modification_type}_{enrichedSubgraph.full_parameters}", enriched=True)
             else:
@@ -1719,11 +1750,12 @@ def initialize_post_subgraph_analysis(config, initial = False):
     config.subgraph_location = f"{config.subgraph_base_location}/{config.filter_analysis_args.network_type}-{config.filter_analysis_args.filter}_{config.subgraph_to_analyse.threshold}"
     try:
         if config.subgraph_to_analyse.all_subgraphs:        
-            config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f]
+            config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f and "enriched" not in f]
         else:
-            config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f and f"subgraph_{config.subgraph_to_analyse.subgraph_number}_" in f]
+            config.all_base_subgraph_files = [f for f in os.listdir(config.subgraph_location) if os.path.isfile(os.path.join(config.subgraph_location, f)) and "unw" in f and ".csv" in f and int(re.search(r"subgraph_(\d+)", f).group(1)) in config.subgraph_to_analyse.subgraph_number and "enriched" not in f]
     except:
         config.all_base_subgraph_files = []
+
     config.all_base_subgraph_files = [file for file in config.all_base_subgraph_files if int(re.search(r"N=(\d+)", file).group(1))>=config.subgraph_to_analyse.minimum_subgraph_size]
     if config.all_base_subgraph_files == []:
         print("No subgraphs found, nothing to analyze")
@@ -1774,9 +1806,8 @@ def initalize_files(config):
     nUMI_thresholds = config.base_network_args.run_parameters.nUMI_sum_per_bead_thresholds
     n_connections_thresholds = config.base_network_args.run_parameters.n_connected_cells_thresholds
     per_edge_weight_threshold = config.base_network_args.run_parameters.per_edge_nUMI_thresholds
-    
+    print("Sample:", config.sample_name)
     config.files_location = f"Intermediary_files/{config.sample_name}/run={config.base_network_args.unfiltered_edge_file[:-4]}_filters=numi{nUMI_thresholds[0]}-{nUMI_thresholds[1]}_nconn{n_connections_thresholds[0]}-{n_connections_thresholds[1]}_w{per_edge_weight_threshold}"
-   
     config.ground_truth_df = pd.read_csv(f"Input_files/{config.base_network_args.ground_truth_file}")
     if config.sample_name == "new_paper_cr":
         ipt="bead_only"
@@ -1789,7 +1820,6 @@ def initalize_files(config):
         config.raw_edges = pd.read_csv(config.raw_edge_file)
     except:
         config.raw_edge_file = f"Intermediary_files/{config.sample_name}/all_cells_synthetic.csv"
-    
     return config
 
 def perform_analysis_actions(config):
@@ -1815,5 +1845,5 @@ if __name__== "__main__":
     from Utils import ConfigLoader
 
     #config_subgraph_analysis_mouse_hippocampus, config_subgraph_analysis_mouse_embryo, config_subgraph_analysis_tonsil, config_analysis, config_subgraph_analysis
-    config = ConfigLoader('config_subgraph_analysis_tonsil.py')
+    config = ConfigLoader('config_subgraph_analysis_embryo_uni.py')
     perform_analysis_actions(config)

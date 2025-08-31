@@ -1,3 +1,4 @@
+from matplotlib.pyplot import ylabel
 from subgraph_analysis_functions import *
 from Utils import *
 from matplotlib.collections import LineCollection
@@ -13,6 +14,7 @@ import matplotlib.cm as cm
 import seaborn as sns
 from scipy.spatial import ConvexHull
 import os
+from scipy.stats import mannwhitneyu
 
 class gatedSubgraph():
     def __init__(self, config, edgelist_name, predicted_cell_types_file = None):
@@ -35,6 +37,18 @@ class gatedSubgraph():
         except:
             self.base_edges = pd.read_csv(f"Intermediary_files/{self.sample}/all_cells_synthetic.csv") 
         self.gating_threshold = re.search(rf"gated_(\d+)", self.name)
+        if self.gating_threshold == None and self.config.filter_analysis_args.network_type =="uni":    
+
+
+            self.subgraph_number = re.search(rf"subgraph_(\d+)", self.name).group(1)
+            enriched_check = re.search(rf"enriched_at_w=(\d+)", self.name)
+            if enriched_check == None:
+                self.gating_threshold = "ungated"
+                self.gated = False
+
+            else:
+                self.gating_threshold = enriched_check.group(1)
+                self.gated = True
 
         if self.gating_threshold == None:
             self.gating_threshold = "ungated"
@@ -43,7 +57,7 @@ class gatedSubgraph():
                 _, _, full_parameters = self.name.split()[-1].partition("dbscan_")
                 self.gating_threshold = full_parameters[:-4]
                 self.gated = True
-        else:
+        elif self.config.filter_analysis_args.network_type !="uni":
             all_matches = re.findall(r"_gated_(\d+)", self.name)
             if len(all_matches)==1:
                 self.gating_threshold = str(self.gating_threshold.group(1))
@@ -53,9 +67,34 @@ class gatedSubgraph():
             self.gated = True
         self.reconstruction_summary = self.find_reconstruction_summary() 
 
+        if self.config.vizualisation_args.how_many_reconstructions != "all":
+            n_reconstructions = self.config.vizualisation_args.how_many_reconstructions
+            last_col = f"morphed_distortion_{n_reconstructions}"
+            if last_col in self.reconstruction_summary.columns:
+                idx = self.reconstruction_summary.columns.get_loc(last_col)
+
+                self.reconstruction_summary = self.reconstruction_summary.iloc[:, :idx+1]
+                self.n_reconstructions = n_reconstructions
+                cols_to_keep = []
+                for col in self.reconstruction_summary.columns:
+                    match = re.search(r'_(\d+)$', col)
+                    if match:
+                        if int(match.group(1)) <= int(n_reconstructions):
+                            cols_to_keep.append(col)
+                    else:
+                        cols_to_keep.append(col)
+                self.reconstruction_summary = self.reconstruction_summary[cols_to_keep]
+
         self.full_reconstruction_summary = self.find_full_reconstruction()
+
+        if self.config.vizualisation_args.how_many_reconstructions != "all":
+            n_reconstructions = self.config.vizualisation_args.how_many_reconstructions
+            last_col = f"align_morph_recon_y_{n_reconstructions}"
+            if last_col in self.full_reconstruction_summary.columns:
+                idx = self.full_reconstruction_summary.columns.get_loc(last_col)
+                self.full_reconstruction_summary = self.full_reconstruction_summary.iloc[:, :idx+1]
+                self.n_reconstructions = n_reconstructions
         self.calculate_per_gt_cell_full_metrics()
-        
         # self.max_gt_dist = pdist(self.reconstruction_summary
         # print(self.reconstruction_summary)
         # self.calculate_recon_dbscan_clusters()
@@ -156,6 +195,13 @@ class gatedSubgraph():
         ax.autoscale()
 
 
+    def compare_recon_and_gt_dist():
+        source_gt = positions_cells_with_edges.loc[only_gt_edges["source"], ["gt_x", "gt_y"]].values
+        target_gt = positions_cells_with_edges.loc[only_gt_edges["target"], ["gt_x", "gt_y"]].values
+
+        source_recon = positions_cells_with_edges.loc[only_gt_edges["source"], ["recon_x_1", "recon_y_1"]].values
+        target_recon = positions_cells_with_edges.loc[only_gt_edges["target"], ["recon_x_1", "recon_y_1"]].values
+
     def plot_gt_edges(self, ax = None, ax_hist = None, type = "gt_uni_edges", additional_arguments = []):
         if not additional_arguments:
             length_threshold = None
@@ -239,7 +285,8 @@ class gatedSubgraph():
         # Define consistent bin edges (same for both histograms)
         num_bins = 300
         bin_edges = np.linspace(0, max_bin_value, num_bins + 1)
-        counts_all, bin_edges, patches = ax_hist.hist(all_possible_distance, bins=bin_edges, alpha = 0.5, facecolor = "lightgray")
+        fig_extra, ax_ex = plt.subplots()
+        counts_all, bin_edges, patches = ax_ex.hist(all_possible_distance, bins=bin_edges, alpha = 0.5, facecolor = "lightgray")
         # Compute histogram bins and colors
         counts_edges, bin_edges, patches = ax_hist.hist(edge_lengths, bins=bin_edges, alpha=1)
 
@@ -411,7 +458,6 @@ class gatedSubgraph():
         self.max_gt_dist = np.max(pdist(self.reconstruction_summary.loc[:, ["gt_x", "gt_y"]].values))
 
         self.reconstruction_summary["mean_edge_distance"] = None
-        print(self.edgelist)
         mean_distance_map = self.edgelist.groupby("source_bc")["mean_distance"].mean()
         self.reconstruction_summary["std_edge_distance"] = None
         mean_distance_map = self.edgelist.groupby("source_bc")["std_distance"].std().fillna(0)
@@ -430,31 +476,48 @@ class gatedSubgraph():
             raise Exception(f"0 or more than one file found for {self.name}: {matching_files}")
 
     def find_full_reconstruction(self):
-
-        if self.gating_threshold != "ungated":
-            if self.config.modification_type == "gated":
-                print(os.listdir(self.file_location))
-                matching_files = [file for file in os.listdir(self.file_location) if f"gated_{self.gating_threshold}" in file and "full_reconstruction_summary" in file]
-            elif self.config.modification_type == "dbscan":
-                matching_files = [file for file in os.listdir(self.file_location) if f"dbscan" in file and self.gating_threshold[:-3] in file and "full_reconstruction_summary" in file and ".csv" in file]
+        if self.config.filter_analysis_args.network_type =="uni":
+            matching_files = [file for file in os.listdir(self.file_location) if self.config.modification_type in file and "full_reconstruction_summary" in file]
+            if self.gating_threshold != "ungated":
+                if self.config.modification_type == "enriched":
+                    matching_files = [file for file in os.listdir(self.file_location) if f"enriched_{self.gating_threshold}_" in file and "full_reconstruction_summary" in file and f"subgraph_{self.subgraph_number}" in file]
+            else:
+                matching_files = [file for file in os.listdir(self.file_location) if f"_dbscan_" not in file and f"_gated_" not in file and "full_reconstruction_summary" in file and "+" not in file and "enriched" not in file and f"subgraph_{self.subgraph_number}" in file]
         else:
-            matching_files = [file for file in os.listdir(self.file_location) if f"_dbscan_" not in file and f"_gated_" not in file and "full_reconstruction_summary" in file and "+" not in file]
-        print(matching_files)
-        print(self.gating_threshold)
+            if self.gating_threshold != "ungated":
+                if self.config.modification_type == "gated":
+                    matching_files = [file for file in os.listdir(self.file_location) if f"gated_{self.gating_threshold}" in file and "full_reconstruction_summary" in file]
+                elif self.config.modification_type == "dbscan":
+                    matching_files = [file for file in os.listdir(self.file_location) if f"dbscan" in file and self.gating_threshold[:-3] in file and "full_reconstruction_summary" in file and ".csv" in file]
+            else:
+                matching_files = [file for file in os.listdir(self.file_location) if f"_dbscan_" not in file and f"_gated_" not in file and "full_reconstruction_summary" in file and "+" not in file]
         if len(matching_files)==1:
             return pd.read_csv(f"{self.file_location}/{matching_files[0]}")
         else:
             raise Exception(f"0 or more than one file found for {self.name}: {matching_files}")
 
     def find_reconstruction_summary(self):
-        print(self.file_location)
-        if self.gating_threshold != "ungated":
-            if self.config.modification_type == "gated":
-                matching_files = [file for file in os.listdir(self.file_location) if f"gated_{self.gating_threshold}.csv" in file and "reconstruction_quality_gt" in file]
-            elif self.config.modification_type == "dbscan":
-                matching_files = [file for file in os.listdir(self.file_location) if f"dbscan" in file and self.gating_threshold[:-3] in file and "reconstruction_quality_gt" in file and ".csv" in file]
+        # print(self.file_location)
+        # print(self.gating_threshold)
+        # print(self.name)
+        if self.config.filter_analysis_args.network_type =="uni":
+            print(self.gating_threshold)
+            if self.gating_threshold != "ungated":
+                if self.config.modification_type == "enriched":
+                    matching_files = [file for file in os.listdir(self.file_location) if f"enriched_{self.gating_threshold}.csv" in file and "reconstruction_quality_gt" in file and f"subgraph_{self.subgraph_number}" in file]
+            else:
+                matching_files = [file for file in os.listdir(self.file_location) if f"_dbscan_" not in file and f"_gated_" not in file and "reconstruction_quality_gt" in file and "+" not in file and "enriched" not in file and f"subgraph_{self.subgraph_number}" in file]
+
+            
         else:
-            matching_files = [file for file in os.listdir(self.file_location) if f"_dbscan_" not in file and f"_gated_" not in file and "reconstruction_quality_gt" in file and "+" not in file]
+            if self.gating_threshold != "ungated":
+                if self.config.modification_type == "gated":
+                    matching_files = [file for file in os.listdir(self.file_location) if f"gated_{self.gating_threshold}.csv" in file and "reconstruction_quality_gt" in file]
+                elif self.config.modification_type == "dbscan":
+                    matching_files = [file for file in os.listdir(self.file_location) if f"dbscan" in file and self.gating_threshold[:-3] in file and "reconstruction_quality_gt" in file and ".csv" in file]
+            else:
+                matching_files = [file for file in os.listdir(self.file_location) if f"_dbscan_" not in file and f"_gated_" not in file and "reconstruction_quality_gt" in file and "+" not in file]
+
         if len(matching_files)==1:
             return pd.read_csv(f"{self.file_location}/{matching_files[0]}")
         else:
@@ -525,9 +588,10 @@ class gatedSubgraph():
             metric_str = f"morphed_{metric}"
 
         per_reconstruction_metrics = [col for col in self.reconstruction_summary.columns if col.startswith(metric_str)]
-        print(per_reconstruction_metrics)
+        # print(per_reconstruction_metrics)
         all_means = []
         non_norm_mean = []
+        all_qa_counts = []
         total_counts = pd.Series(dtype=int)
         for reconstruction in per_reconstruction_metrics:
             per_recon_data_non_norm = self.reconstruction_summary[reconstruction]
@@ -541,11 +605,17 @@ class gatedSubgraph():
                 x = kde_y
             all_means.append(per_recon_data.median())
             if metric == "knn":
+
                 print(per_recon_data.value_counts().sort_index())
                 qa_counts = per_recon_data_non_norm.value_counts().sort_index()
                 total_counts = total_counts.add(qa_counts, fill_value=0)
                 total_counts = total_counts.sort_index()
                 non_norm_mean.append(np.mean(per_recon_data_non_norm))
+                print(per_recon_data_non_norm)
+                print(total_counts)
+                if 'all_qa_counts' not in locals():
+                    all_qa_counts = []
+                all_qa_counts.append(qa_counts)
                 ax.scatter(qa_counts.index, qa_counts.values, label=f"µ: {per_recon_data.mean():.4f}", s=10, c = "k", alpha =0.5)
             else:
                 num_bins = 100
@@ -564,24 +634,38 @@ class gatedSubgraph():
                     bin_center = (left + right) / 2
                     color = cmap(norm(bin_center))
                     patch.set_facecolor(color)
-            # ax.plot(x, kde_y, label=f"µ: {per_recon_data.mean():.3f}", color='m', linestyle='-', linewidth=1)
-        # quit()
-        print(non_norm_mean)
-        # ax.set_xlim([-0.1, 1.1])
+
+        qa_counts_df = pd.concat(all_qa_counts, axis=1)
+        qa_counts_df.columns = per_reconstruction_metrics  # Optional: name columns by reconstruction
+        qa_counts_df['mean'] = qa_counts_df.mean(axis=1)
+        qa_counts_df['std'] = qa_counts_df.std(axis=1)
+        print(qa_counts_df)
+
         if metric =="knn":
             
             total_sum = (total_counts.index.to_numpy() * total_counts.values).sum()
             total_n = total_counts.values.sum()
             total_mean = total_sum / total_n
-            label = f"mean: {total_mean:.4f}"
+            label = f"mean: {total_mean:.8f}"
+            label = f"mean: {np.mean(non_norm_mean)}±{np.std(non_norm_mean)}(variance: {np.var(non_norm_mean)})"
             
             values = total_counts.index.to_numpy()
             counts = total_counts.values
             variance = ((counts * (values - total_mean) ** 2).sum()) / total_n
             total_std = np.sqrt(variance)
             print(f"mean: {total_mean}±{total_std}")
-            print(f"per run mean {np.mean(non_norm_mean)}±{np.std(non_norm_mean)}")
+            print(f"KNN:per run mean {np.mean(non_norm_mean)}±{np.std(non_norm_mean)}(variance: {np.var(non_norm_mean)})")
             ax.plot(total_counts.index, total_counts.values/len(per_reconstruction_metrics))
+            ax.scatter(qa_counts_df.index, qa_counts_df["mean"], label=f"mean: {total_mean:.3f}±{total_std:.3f}({np.mean(non_norm_mean):.1f}±{np.std(non_norm_mean):.1f})", c = "k", s = 10, alpha = 0.5)
+            ax.errorbar(
+                qa_counts_df.index, 
+                qa_counts_df["mean"], 
+                yerr=qa_counts_df["std"], 
+                fmt='o', 
+                color='r', 
+                markersize=5
+            )
+        
         elif metric =="distortion":
             total_mean = np.mean(all_means)
             total_std = np.std(all_means)
@@ -988,7 +1072,7 @@ class gatedSubgraph():
         plt.show()
         return fig
     
-    def compare_normal_and_morphed_distortion(self, metric = "distortion", ax_normal = None, ax_morph = None, type =None):
+    def compare_normal_and_morphed(self, metric = "distortion", ax_normal = None, ax_morph = None, type =None):
         if ax_normal == None or ax_morph == None:
             fig, (ax_normal, ax_morph ) = plt.subplots(1, 2, figsize = (12, 6))
 
@@ -1088,6 +1172,7 @@ class gatedSubgraph():
         from scipy.spatial.distance import pdist
         if not additional_arguments:
             type = "recon"
+            subsample = False
         else:
             if "morph" in additional_arguments:
                 type = f"morph_recon"
@@ -1106,7 +1191,7 @@ class gatedSubgraph():
         recon_positions = recon_positions.loc[gt_positions.index, :]
         recon_columns = recon_positions[[col for col in recon_positions.columns if col.startswith(type)]]
         if subsample:
-            sampled_barcodes = np.random.choice(gt_positions.index, size=1000, replace=False)
+            sampled_barcodes = np.random.choice(gt_positions.index, size=2000, replace=False)
             gt_positions = gt_positions.loc[sampled_barcodes]
         gt_distances = pdist(gt_positions)
         x = gt_distances
@@ -1114,6 +1199,7 @@ class gatedSubgraph():
         recon_distances_dict = {i: [] for i, d in enumerate(gt_distances)}
         all_cpd = []
         for i in range(len(recon_columns.columns)//2):
+
             recon_positions = recon_columns[[f"{type}_x_{i+1}", f"{type}_y_{i+1}"]]
             if subsample:
                 recon_positions = recon_positions.loc[sampled_barcodes]
@@ -1121,10 +1207,10 @@ class gatedSubgraph():
             correlation, _ = pearsonr(gt_distances, recon_distances)
             cpd_score = correlation**2
             all_cpd.append(cpd_score)
-            print(cpd_score)
+            # print(cpd_score)
             y = recon_distances
-            slope, intercept = np.polyfit(x, y, 1)  # First-degree polynomial fit (linear)
-            y_pred = np.polyval([slope, intercept], x)  # Compute predicted values
+            # slope, intercept = np.polyfit(x, y, 1)  # First-degree polynomial fit (linear)
+            # y_pred = np.polyval([slope, intercept], x)  # Compute predicted values
 
             # Plot best-fit line
             # ax.plot(x, y_pred, color="red", linewidth=0.5, label=f"(R^2={cpd_score:.4f})", linestyle = ":")
@@ -1132,19 +1218,21 @@ class gatedSubgraph():
                 recon_distances_dict[idx].append(recon_dist)  # Append each reconstructed distance
 
             # print(recon_distances_dict) 
-            print(i+1)
-            # break
+            print(i+1, cpd_score)
+        cpd_scores = pd.DataFrame(all_cpd, columns=["cpd"])
+        cpd_scores.to_csv(f"{self.file_location}/{self.name[:-4]}_cpd_scores.csv", index=False)
         average_reconstructed_distances = {
             idx: np.mean(recon_list) for idx, recon_list in recon_distances_dict.items()
         }
-        print(f"avg: {np.mean(all_cpd)}±{np.std(all_cpd)}")
+
+        print(f"avg: {np.mean(all_cpd)}±{np.std(all_cpd)}(variance: {np.var(all_cpd)})")
         sorted_indices = sorted(gt_distances_dict.keys())
         sorted_gt_distances = np.array([gt_distances_dict[idx] for idx in sorted_indices])
         sorted_avg_recon_distances = np.array([average_reconstructed_distances[idx] for idx in sorted_indices])
         correlation_avg, _ = pearsonr(sorted_gt_distances, sorted_avg_recon_distances)
         cpd_score = correlation**2
-        print(cpd_score)
-        # return
+        # print(cpd_score)
+        
         slope, intercept = np.polyfit(sorted_gt_distances, sorted_avg_recon_distances, 1)  # First-degree polynomial fit (linear)
         y_pred = np.polyval([slope, intercept], sorted_gt_distances)  # Compute predicted values
 
@@ -1153,8 +1241,12 @@ class gatedSubgraph():
         bins = 100  # Adjust bin size for better density estimation
 
         # Compute density using a 2D histogram
-        print(sorted_gt_distances, sorted_avg_recon_distances)
         density, xedges, yedges = np.histogram2d(sorted_gt_distances, sorted_avg_recon_distances, bins=bins)
+ 
+        # fig2, ax2 = plt.subplots(figsize=(6, 6))
+        # X, Y = np.meshgrid(xedges, yedges)
+        # pcm = ax2.pcolormesh(X, Y, density.T, cmap='magma_r', shading='auto')
+        # fig2.colorbar(pcm, ax=ax2)
 
         # Convert (x, y) values into corresponding density values
         x_bin_idx = np.digitize(sorted_gt_distances, xedges) - 1
@@ -1164,7 +1256,7 @@ class gatedSubgraph():
         densities = density[x_bin_idx, y_bin_idx]
 
         # Normalize density values for color mapping
-        densities = densities / densities.max()
+        densities = densities
 
         # Scatter plot with density-based coloring
         if self.config.vizualisation_args.save_to_image_format =="pdf":
@@ -1181,9 +1273,27 @@ class gatedSubgraph():
             ax.legend(loc = "upper left")
         else: 
             c = densities
-        sc = ax.scatter(sorted_gt_distances, sorted_avg_recon_distances, c=c, cmap="magma_r", s=1, edgecolors="none", alpha = 1)
+        
+        norm = mcolors.Normalize(vmin=0, vmax=500)
+        cmap = cm.get_cmap("magma_r")
+        sc = ax.scatter(sorted_gt_distances, sorted_avg_recon_distances, c=c, cmap=cmap, norm=norm, s=1, edgecolors="none", alpha=1)
         ax.set_title(f"{self.gating_threshold}, {len(gt_distances)} distances")
         plt.colorbar(sc, label="Point Density")
+
+        fig2, ax2 = plt.subplots(figsize=(2, 6))
+        fig2.subplots_adjust(left=0.5, right=0.8)  # Make room for the colorbar
+
+        # Hide the axis
+        ax2.axis('off')
+
+        # Create a ScalarMappable and only plot the colorbar
+        sm = cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])  # Required for colorbar
+        cbar = fig2.colorbar(sm, ax=ax2 , orientation='vertical', fraction=1.0)
+        cbar.set_label("Point Density")
+
+
+        return all_cpd
         # ax.scatter(gt_distances, recon_distances, s = 3)
 
     def per_cell_type_metrics(self, fig = None, additional_arguments = []):
@@ -1843,6 +1953,144 @@ class gatedSubgraph():
         fig.savefig(f"Images/{self.sample}_correlations.{img_format}", dpi=300, format = img_format)
 
         pass
+
+    def plot_knn_bars(self, ax, additional_arguments, xpos=0, label=None):
+        # Example implementation of KNN bars plot
+        if self.gated ==True:
+            additional_arguments == ["morph"]
+        if not additional_arguments:
+            metric_str = f"knn_"
+        else:
+            metric_str = f"morphed_knn_"
+        knn_columns = [col for col in self.reconstruction_summary.columns if col.startswith(metric_str)]
+        knn_values = self.reconstruction_summary[knn_columns].copy()
+        mean_knn_values = knn_values.mean(axis=0)
+        overall_mean_knn = mean_knn_values.mean()
+        overall_std_knn = mean_knn_values.std()
+        x_jitter = np.random.normal(xpos, 0.02, size=len(mean_knn_values))
+        
+
+        ax.set_xticks([0])
+        ax.bar(xpos, overall_mean_knn, yerr=overall_std_knn, color="skyblue", edgecolor="k", width=0.6, capsize=10, label=label)
+        ax.scatter(x_jitter, mean_knn_values, color="k", s=8)
+
+        ax.set_xticklabels([f"{metric_str.rstrip('_')}\n{self.sample}"])
+        ax.set_ylabel("KNN Value")
+        ax.set_title("Mean KNN (all reconstructions) with Jittered Points")
+        ax.set_ylim([0, 1.0])
+        ax.set_box_aspect(1)
+        return ax, mean_knn_values
+
+    def plot_cpd_bars(self, ax, additional_arguments, xpos=0, label=None):
+        all_cpds, type = self.calc_cpd_for_bars(additional_arguments=additional_arguments)
+        # Example implementation of CPD bars plot
+
+        overall_mean_cpd = np.mean(all_cpds)
+        overall_std_cpd = np.std(all_cpds)
+        x_jitter = np.random.normal(xpos, 0.02, size=len(all_cpds))
+
+        ax.bar(xpos, overall_mean_cpd, yerr=overall_std_cpd, color="skyblue", edgecolor="k", width=0.6, capsize=10, label=label)
+        ax.scatter(x_jitter, all_cpds, color="k", s=8)
+        ax.set_ylabel("CPD Value")
+        ax.set_title("Mean CPD (all reconstructions) with Jittered Points")
+        ax.set_ylim([0, 1.0])
+        ax.set_box_aspect(1)
+        return ax, all_cpds
+
+    def plot_cpd_change_morph(self, ax):
+        # Example implementation of CPD change morph plot
+        all_morphed_cpds, morphed_type = self.calc_cpd_for_bars(additional_arguments=["morph"])
+        all_cpds, type = self.calc_cpd_for_bars()
+
+        normal_mean_cpd = np.mean(all_cpds)
+        normal_std_cpd = np.std(all_cpds)
+        x_jitter_normal = np.random.normal(0, 0.02, size=len(all_cpds))
+
+
+        morphed_mean_cpd = np.mean(all_morphed_cpds)
+        morphed_std_cpd = np.std(all_morphed_cpds)
+        x_jitter_morphed = np.random.normal(1, 0.02, size=len(all_morphed_cpds))
+
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["Normal", "Morphed"])
+        ax.bar([0, 1], [normal_mean_cpd, morphed_mean_cpd], yerr=[normal_std_cpd, morphed_std_cpd], color="skyblue", edgecolor="k", width=0.6, capsize=10)
+        ax.scatter(x_jitter_normal, all_cpds, color="k", s=8)
+        ax.scatter(x_jitter_morphed, all_morphed_cpds, color="k", s=8)
+
+        ax.set_ylabel("CPD Value")
+        ax.set_title("Mean CPD (all reconstructions) with Jittered Points")
+        ax.set_ylim([0, 1.0])
+        ax.set_box_aspect(1)
+        return [all_cpds, all_morphed_cpds]
+
+    def plot_knn_change_morph(self, ax):
+        # Example implementation of KNN change morph plot
+        knn_columns_normal = [col for col in self.reconstruction_summary.columns if col.startswith("knn_")]
+        knn_values_normal = self.reconstruction_summary[knn_columns_normal].copy()
+        mean_knn_values_normal = knn_values_normal.mean(axis=0)
+        overall_mean_knn_normal = mean_knn_values_normal.mean()
+        overall_std_knn_normal = mean_knn_values_normal.std()
+
+        knn_columns_morphed = [col for col in self.reconstruction_summary.columns if col.startswith("morphed_knn_")]
+        knn_values_morphed = self.reconstruction_summary[knn_columns_morphed].copy()
+        mean_knn_values_morphed = knn_values_morphed.mean(axis=0)
+        overall_mean_knn_morphed = mean_knn_values_morphed.mean()
+        overall_std_knn_morphed = mean_knn_values_morphed.std()
+
+        x_jitter_normal = np.random.normal(0, 0.02, size=len(mean_knn_values_normal))
+
+        x_jitter_morphed = np.random.normal(1, 0.02, size=len(mean_knn_values_morphed))
+
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["Normal", "Morphed"])
+        ax.bar([0, 1], [overall_mean_knn_normal, overall_mean_knn_morphed], yerr=[overall_std_knn_normal, overall_std_knn_morphed], color="skyblue", edgecolor="k", width=0.6, capsize=10)
+        ax.scatter(x_jitter_normal, mean_knn_values_normal, color="k", s=8)
+        ax.scatter(x_jitter_morphed, mean_knn_values_morphed, color="k", s=8)
+
+        ax.set_ylabel("KNN Value")
+        ax.set_title("Mean KNN (all reconstructions) with Jittered Points")
+        ax.set_ylim([0, 1.0])
+        ax.set_box_aspect(1)
+        return [mean_knn_values_normal, mean_knn_values_morphed]
+
+    def calc_cpd_for_bars(self, additional_arguments = []):
+        from scipy.spatial.distance import pdist
+        if not additional_arguments:
+            type = "recon"
+            subsample = False
+        else:
+            if "morph" in additional_arguments:
+                type = f"morph_recon"
+            else:
+                type = "recon"
+            if "subsample" in additional_arguments:
+                subsample = True
+            else:
+                subsample = False
+
+        gt_positions = self.reconstruction_summary.copy().set_index("bc")
+        gt_positions = gt_positions[["gt_x", "gt_y"]]
+        recon_positions = self.full_reconstruction_summary.copy().set_index("node_bc")
+        recon_positions = recon_positions.loc[gt_positions.index, :]
+        recon_columns = recon_positions[[col for col in recon_positions.columns if col.startswith(type)]]
+        if subsample:
+            sampled_barcodes = np.random.choice(gt_positions.index, size=2000, replace=False)
+            gt_positions = gt_positions.loc[sampled_barcodes]
+        gt_distances = pdist(gt_positions)
+        all_cpd = []
+        for i in range(len(recon_columns.columns)//2):
+            recon_positions = recon_columns[[f"{type}_x_{i+1}", f"{type}_y_{i+1}"]]
+            if subsample:
+                recon_positions = recon_positions.loc[sampled_barcodes]
+            recon_distances = pdist(recon_positions)
+            correlation, _ = pearsonr(gt_distances, recon_distances)
+            cpd_score = correlation**2
+            all_cpd.append(cpd_score)
+            print(i, cpd_score)
+
+        return all_cpd, type
+
+
 class gatedSubgraphCollection():
     def __init__(self, list_of_gated_subgraphs, config):
         self.all_subgraphs: List[gatedSubgraph] = list_of_gated_subgraphs
@@ -1877,13 +2125,25 @@ class gatedSubgraphCollection():
         else:
             max_columns = 6
         n_rows = (n_subgraphs + max_columns - 1) // max_columns  # Calculate the required rows
-        
+        if "bars" in plotting_type:
+            max_columns = 1
+            n_rows = 1
+            
         fig, axes = plt.subplots(n_rows, max_columns, figsize=(max_columns * 6, n_rows * 6))
         axes = np.array(axes)  # Ensure it's an array for indexing
         axes = axes.flatten()  # Flatten to handle single indexing
-        
+        labels = []
+        values = []
         for i, subgraph in enumerate(self):
-            ax1 = axes[i]
+            label = f"{subgraph.sample}\n{subgraph.gating_threshold}"
+            if self.config.filter_analysis_args.network_type =="uni":
+                label = label + f"\n{subgraph.subgraph_number}"
+            labels.append(label)
+            if "bars" in plotting_type:
+                ax1 = axes[0]
+            else:
+                ax1 = axes[i]
+
             if plotting_type in dual_plot_types:
                 divider = ax1.get_position()  # Get original axis position
                 fig.delaxes(ax1)  # Remove original axis from subplot grid
@@ -1893,7 +2153,7 @@ class gatedSubgraphCollection():
                 ax1 = fig.add_axes([divider.x0, divider.y0 + height + gap, divider.width, height])  # Upper axis
                 ax2 = fig.add_axes([divider.x0, divider.y0, divider.width, height])  # Lower axis
             else:
-                ax1.set_title(f"{subgraph.gating_threshold}, {len(subgraph.edgelist)} edges")
+                ax1.set_title(f"{self.config.subgraph_location}\n{subgraph.gating_threshold}, {len(subgraph.edgelist)} edges")
                 ax1.set_box_aspect(1)
 
             if plotting_type == "distance_variation_metrics":
@@ -1917,8 +2177,8 @@ class gatedSubgraphCollection():
                 fig = subgraph.analyse_dbscan_clusters(additional_arguments=additional_metrics)
             #dual plotting type plots
             elif plotting_type == "normal_vs_morphed":
-                subgraph.compare_normal_and_morphed_distortion(ax_normal=ax1, ax_morph=ax2)
-                subgraph.compare_normal_and_morphed_distortion(ax_normal=ax1, ax_morph=ax2, type = "scatter")
+                subgraph.compare_normal_and_morphed(ax_normal=ax1, ax_morph=ax2)
+                subgraph.compare_normal_and_morphed(ax_normal=ax1, ax_morph=ax2, type = "scatter")
             elif plotting_type =="cell_types":
                 subgraph.per_cell_type_metrics(fig = fig, additional_arguments = additional_metrics) 
             elif plotting_type =="cpd":
@@ -1936,11 +2196,73 @@ class gatedSubgraphCollection():
                 subgraph.plot_per_cell_cpd(ax = ax1, additional_arguments = additional_metrics)
             elif plotting_type =="metric_heatmaps":
                 subgraph.plot_metric_heatmaps(fig = fig, additional_arguments = additional_metrics)
-            else: 
+            elif plotting_type == "knn_bars":   
+                if subgraph.gated == True and self.config.filter_analysis_args.network_type !="uni":
+                    _, knn_values =subgraph.plot_knn_bars(ax = ax1, additional_arguments = ["morph"], xpos = i, label = label)
+                else:
+                    _, knn_values = subgraph.plot_knn_bars(ax = ax1, additional_arguments = additional_metrics, xpos = i, label = label)
+                values.append(knn_values)
+                knn_scores = pd.DataFrame(knn_values, columns=["knn"])
+                knn_scores.to_csv(f"{subgraph.file_location}/{subgraph.name[:-4]}_knn_scores.csv", index=False)
+            elif plotting_type == "cpd_bars":
+                if subgraph.gated == True and self.config.filter_analysis_args.network_type !="uni":
+                    _, cpd_values = subgraph.plot_cpd_bars(ax = ax1, additional_arguments = ["morph"], xpos = i, label = label)
+                else:
+                    _, cpd_values = subgraph.plot_cpd_bars(ax = ax1, additional_arguments = additional_metrics, xpos = i, label = label)
+                values.append(cpd_values)
+                cpd_scores = pd.DataFrame(cpd_values, columns=["cpd"])
+                cpd_scores.to_csv(f"{subgraph.file_location}/{subgraph.name[:-4]}_cpd_scores.csv", index=False)
+            elif plotting_type == "cpd_change_morph":
+                values = subgraph.plot_cpd_change_morph(ax = ax1)
+            elif plotting_type == "knn_change_morph":
+                values = subgraph.plot_knn_change_morph(ax = ax1)
+            else:
+
                 print("No such analysis:", plotting_type)
                 
                 return
-        
+        if "bars" in plotting_type or "change" in plotting_type:
+            ax1.set_xticks(range(len(labels)))
+            ax1.set_xticklabels(labels)
+            if len(values)==2:
+                print(labels)
+                print(values)
+                stat, pval = mannwhitneyu(values[0], values[1], alternative='two-sided')
+                print(f"Mann-Whitney U statistic: {stat:.2e}, p-value: {pval:.2e}")
+
+                # Effect size: rank-biserial correlation
+                n1, n2 = len(values[0]), len(values[1])
+                rank_biserial = 1 - (2 * stat) / (n1 * n2)
+                print(f"Rank-biserial correlation (effect size): {rank_biserial:.3f}")
+
+                # 95% confidence interval for the difference in medians (bootstrap)
+                n_boot = 1000
+                boot_diffs = []
+                v0 = np.array(values[0])
+                v1 = np.array(values[1])
+                rng = np.random.default_rng(42)
+                for _ in range(n_boot):
+                    s0 = rng.choice(v0, size=len(v0), replace=True)
+                    s1 = rng.choice(v1, size=len(v1), replace=True)
+                    boot_diffs.append(np.median(s0) - np.median(s1))
+                ci_low, ci_high = np.percentile(boot_diffs, [2.5, 97.5])
+                print(f"95% CI for median difference: [{ci_low:.3f}, {ci_high:.3f}]")
+
+                # Find the y position for the bracket
+                y_max = max(
+                    max(values[0]) if len(values[0]) > 0 else 0,
+                    max(values[1]) if len(values[1]) > 0 else 0
+                )
+                y_bracket = y_max * 1.05
+                # Draw the bracket
+                ax1.plot([0, 0, 1, 1], [y_bracket, y_bracket + 0.02, y_bracket + 0.02, y_bracket], lw=1.5, c='k')
+                # Annotate with the p-value and effect size
+                ax1.text(
+                    0.5, y_bracket + 0.025,
+                    f"p = {pval:.2e}\nU = {stat:.2f}\nEff.size = {rank_biserial:.2f}\n95% CI Δmed = [{ci_low:.2f}, {ci_high:.2f}]",
+                    ha='center', va='bottom', fontsize=10
+                )
+
         # Hide any unused subplot axes
         for j in range(n_subgraphs, len(axes)):
             axes[j].set_visible(False)
@@ -2002,46 +2324,218 @@ class gatedSubgraphCollection():
             fig2.suptitle(f"{plotting_type}")
             subgraph.save_plot(fig2, type = plotting_type+"_2", category = "positions", format = "png", dpi = 900)
         subgraph.save_plot(fig, type = plotting_type, category = "positions", format = save_format, dpi = 600)
+        return ax1
+    
 
 def load_quality_files(config):
  
     config.gated_file_location = replace_first_folder(config.subgraph_location, "Output_files") + f"_{config.filter_analysis_args.reconstruction_dimension}D"
+
     if config.subgraph_to_analyse.gating_threshold !="all":
-        subgraphs = [file for file in os.listdir(config.gated_file_location) if "detailed_edgelist" in file and ".csv" in file and (f"_{config.subgraph_to_analyse.gating_threshold}_" in file or ("gated" not in file and "dbscan" not in file))]
+        subgraphs = [file for file in os.listdir(config.gated_file_location) if "detailed_edgelist" in file and ".csv" in file and (f"_{config.subgraph_to_analyse.gating_threshold}" in file or ("gated" not in file and "dbscan" not in file and "enriched" not in file))]
     else:
         subgraphs = [file for file in os.listdir(config.gated_file_location) if "detailed_edgelist" in file and ".csv" in file and (config.modification_type in file or ("gated" not in file and "dbscan" not in file))]
+    
+    if config.filter_analysis_args.network_type =="uni":
+
+        subgraphs = [file for file in subgraphs if int(re.search(r"subgraph_(\d+)", file).group(1)) in config.subgraph_to_analyse.subgraph_number]
+
     unmodded_subgraph = [file for file in subgraphs if len(re.findall(f"_{config.modification_type}_",file))==0]
     if not config.subgraph_to_analyse.include_recursively_gated:
         subgraphs = [file for file in subgraphs if len(re.findall(f"_{config.modification_type}_",file))<2]
 
     if not config.subgraph_to_analyse.include_ungated:
         subgraphs = [file for file in subgraphs if len(re.findall(f"_{config.modification_type}_",file))!=0]
-
+ 
     if not subgraphs:
         raise FileNotFoundError(f"No files fulfill requirements - gating_threshold:{config.subgraph_to_analyse.gating_threshold}, include_ungated: {config.subgraph_to_analyse.include_ungated}, include_recursively_gated:{config.subgraph_to_analyse.include_recursively_gated}")
+    
+    subgraphs = [file for file in subgraphs if "cpd" not in file and "knn" not in file]
+    print(subgraphs)
     subgraphs = [gatedSubgraph(config, file) for file in subgraphs]
     all_subgraphs = gatedSubgraphCollection(subgraphs, config)
     all_subgraphs.unmodified_subgraph = gatedSubgraph(config, unmodded_subgraph[0])
+    
     return all_subgraphs
 
+def multi_config_plots(collections, plotting_type = None, additional_metrics = []):
 
-def additional_subgraph_analysis(config, category =None, plotting_type = None, additional_arguments = []):
+    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+
+    labels = []
+    values = []
+    for i, collection in enumerate(collections):
+        modified_check = re.search(r'run=(.*?)(?:_\d+)?_filters=', collection.unmodified_subgraph.config.files_location)
+        if modified_check:
+            modification = f"{collection.unmodified_subgraph.sample}\n{modified_check.group(1)}"
+            print("Modified edgelists:", modification)
+            if values == []:
+                values = {}
+            if modification not in values:
+                values[modification] = []
+
+        if plotting_type == "knn_bars":
+            label = f"{collection.unmodified_subgraph.sample}\n{collection.unmodified_subgraph.gating_threshold}"
+            bar, knn_values = collection.unmodified_subgraph.plot_knn_bars(ax = ax, additional_arguments = additional_metrics, xpos=i, label=label)
+            if modified_check:
+                values[modification].extend(knn_values)
+            else:
+                values.append(knn_values)
+            labels.append(label)
+            knn_scores = pd.DataFrame(knn_values, columns=["knn"])
+            knn_scores.to_csv(f"{collection.unmodified_subgraph.file_location}/{collection.unmodified_subgraph.name[:-4]}_knn_scores.csv", index=False)
+        if plotting_type == "cpd_bars":
+            all_cpd, type = collection.unmodified_subgraph.calc_cpd_for_bars(additional_arguments=additional_metrics)
+            mean_cpd = np.mean(all_cpd)
+            std_cpd = np.std(all_cpd)
+            label=f"{type}\n{collection.unmodified_subgraph.sample}"
+            labels.append(label)
+            cpd_scores = pd.DataFrame(all_cpd, columns=["cpd"])
+            cpd_scores.to_csv(f"{collection.unmodified_subgraph.file_location}/{collection.unmodified_subgraph.name[:-4]}_cpd_scores.csv", index=False)
+            x_jitter = np.random.normal(i, 0.02, size=len(all_cpd))
+            ax.bar(i, mean_cpd, yerr=std_cpd, color="skyblue", edgecolor="k", width=0.6, capsize=10, label=label)
+            ax.scatter(x_jitter, all_cpd, color="k", s=8)
+            if not additional_arguments:
+                type = "recon"
+            else:
+                type = f"morph_recon"
+            
+            if modified_check:
+                values[modification].extend(all_cpd)
+            else:
+                values.append(all_cpd)
+            
+    if len(collections)==2 and not modified_check:
+        print(labels)
+        print(values)
+        stat, pval = mannwhitneyu(values[0], values[1], alternative='two-sided')
+        print(f"Mann-Whitney U statistic: {stat:.2e}, p-value: {pval:.2e}")
+
+        # Effect size: rank-biserial correlation
+        n1, n2 = len(values[0]), len(values[1])
+        rank_biserial = 1 - (2 * stat) / (n1 * n2)
+        print(f"Rank-biserial correlation (effect size): {rank_biserial:.3f}")
+
+        # 95% confidence interval for the difference in medians (bootstrap)
+        n_boot = 1000
+        boot_diffs = []
+        v0 = np.array(values[0])
+        v1 = np.array(values[1])
+        rng = np.random.default_rng(42)
+        for _ in range(n_boot):
+            s0 = rng.choice(v0, size=len(v0), replace=True)
+            s1 = rng.choice(v1, size=len(v1), replace=True)
+            boot_diffs.append(np.median(s0) - np.median(s1))
+        ci_low, ci_high = np.percentile(boot_diffs, [2.5, 97.5])
+        print(f"95% CI for median difference: [{ci_low:.3f}, {ci_high:.3f}]")
+
+        # Find the y position for the bracket
+        y_max = max(
+            max(values[0]) if len(values[0]) > 0 else 0,
+            max(values[1]) if len(values[1]) > 0 else 0
+        )
+        y_bracket = y_max * 1.05
+        # Draw the bracket
+        ax.plot([0, 0, 1, 1], [y_bracket, y_bracket + 0.02, y_bracket + 0.02, y_bracket], lw=1.5, c='k')
+        # Annotate with the p-value and effect size
+        ax.text(
+            0.5, y_bracket + 0.025,
+            f"p = {pval:.2e}\nU = {stat:.2f}\nEff.size = {rank_biserial:.2f}\n95% CI Δmed = [{ci_low:.2f}, {ci_high:.2f}]",
+            ha='center', va='bottom', fontsize=10
+        )
+    elif len(collections)>2 and not modified_check:
+        print("Multiple collections detected, performing statistical tests...")
+        # Perform statistical tests for multiple collections
+        for i in range(len(values)):
+            for j in range(i + 1, len(values)):
+                stat, pval = mannwhitneyu(values[i], values[j], alternative='two-sided')
+                print(f"Comparison between {labels[i]} and {labels[j]}: U = {stat:.2f}, p = {pval:.2e}")
+
+    if modified_check:
+        plt.close(fig)
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        print(values)
+        print(labels)
+        keys = list(values.keys())
+        means = [np.mean(values[k]) for k in keys]
+        stds = [np.std(values[k]) for k in keys]
+        x = np.arange(len(keys))
+
+        # Bar plot with error bars
+        ax.bar(x, means, yerr=stds, color="skyblue", edgecolor="k", width=0.6, capsize=10)
+
+        # Jittered scatter for each group
+        for i, k in enumerate(keys):
+            y = values[k]
+            x_jitter = np.random.normal(i, 0.08, size=len(y))
+            ax.scatter(x_jitter, y, color="k", s=8, alpha=0.5)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(keys, rotation=45, ha="right")
+        ax.set_ylabel(plotting_type)
+        ax.set_title(plotting_type)
+        ax.set_ylim([0, 1.0])
+        ax.set_box_aspect(1)
+        plt.show()
+        quit()
+
+    if plotting_type in ["knn_bars", "cpd_bars"] and not modification:
+        print(labels)
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=45, ha="right")
+        ax.set_ylim([0, 1.0])
+        ax.set_box_aspect(1)
+        if plotting_type == "knn_bars":
+            ax.set_ylabel("KNN Value")
+            ax.set_title("Mean KNN (all subgraphs) with Jittered Points")
+        elif plotting_type == "cpd_bars":
+            ax.set_ylabel("CPD Value")
+            ax.set_title("Mean CPD (all reconstructions) with Jittered Points")
+        plt.legend()
+        pass
+        plt.savefig(f"Images/multi_config_{plotting_type}.pdf", dpi=300, format="pdf")
+
+def additional_subgraph_analysis(config_all, category =None, plotting_type = None, additional_arguments = []):
     from subgraph_analysis_functions import initalize_files
     
-    config = initalize_files(config)
-    config = initialize_post_subgraph_analysis(config, initial=True)
-    if config.filter_analysis_args.analyse_all_thresholds:
-        all_thresholds_with_reconstruction =[int(re.search(fr"{config.filter_analysis_args.filter}_(\d+)", filter).group(1)) for filter in os.listdir(replace_first_folder(config.subgraph_base_location, "Subgraph_reconstructions")) if config.filter_analysis_args.filter in filter and f"{config.filter_analysis_args.reconstruction_dimension}D" in filter]
-    else:
-        all_thresholds_with_reconstruction = config.filter_analysis_args.thresholds_to_analyse
-    for threshold in all_thresholds_with_reconstruction:
-        config.subgraph_to_analyse.threshold = threshold
-        print("\nCurrent Threshold: ",threshold)
-        config = initialize_post_subgraph_analysis(config)
-        config.vizualisation_args.show_plots = False
-        config.plot_modification = True
+    if isinstance(config_all, list):
+        all_collections = []
+        for config in config_all:
+            
+            config = initalize_files(config)
+            config = initialize_post_subgraph_analysis(config, initial=True)
+            if config.filter_analysis_args.analyse_all_thresholds:
+                all_thresholds_with_reconstruction =[int(re.search(fr"{config.filter_analysis_args.filter}_(\d+)", filter).group(1)) for filter in os.listdir(replace_first_folder(config.subgraph_base_location, "Subgraph_reconstructions")) if config.filter_analysis_args.filter in filter and f"{config.filter_analysis_args.reconstruction_dimension}D" in filter]
+            else:
+                all_thresholds_with_reconstruction = config.filter_analysis_args.thresholds_to_analyse
+            for threshold in all_thresholds_with_reconstruction:
+                config.subgraph_to_analyse.threshold = threshold
+                print("\nCurrent Threshold: ",threshold)
+                config = initialize_post_subgraph_analysis(config)
+                config.vizualisation_args.show_plots = False
+                config.plot_modification = True
 
-        all_subgraphs = load_quality_files(config)
+                all_subgraphs = load_quality_files(config)
+                all_collections.append(all_subgraphs)
+                
+        multi_config_plots(all_collections, plotting_type, additional_arguments)
+                
+    else:
+        config = config_all
+        config = initalize_files(config)
+        config = initialize_post_subgraph_analysis(config, initial=True)
+        if config.filter_analysis_args.analyse_all_thresholds:
+            all_thresholds_with_reconstruction =[int(re.search(fr"{config.filter_analysis_args.filter}_(\d+)", filter).group(1)) for filter in os.listdir(replace_first_folder(config.subgraph_base_location, "Subgraph_reconstructions")) if config.filter_analysis_args.filter in filter and f"{config.filter_analysis_args.reconstruction_dimension}D" in filter]
+        else:
+            all_thresholds_with_reconstruction = config.filter_analysis_args.thresholds_to_analyse
+        for threshold in all_thresholds_with_reconstruction:
+            config.subgraph_to_analyse.threshold = threshold
+            print("\nCurrent Threshold: ",threshold)
+            config = initialize_post_subgraph_analysis(config)
+            config.vizualisation_args.show_plots = False
+            config.plot_modification = True
+
+            all_subgraphs = load_quality_files(config)
         if category == "analyse": 
             all_subgraphs.plot_all_subgraphs(plotting_type=plotting_type, additional_metrics=additional_arguments)
         elif category == "positions":
@@ -2049,8 +2543,8 @@ def additional_subgraph_analysis(config, category =None, plotting_type = None, a
             all_subgraphs.plot_positions(plotting_type = plotting_type, additional_metrics = additional_arguments)
         else:
             print("No such category:", category)
-        # print(subgraph.quality_df)
-        # print(subgraph.all_enriched_subgraphs)
+                    # print(subgraph.quality_df)
+                    # print(subgraph.all_enriched_subgraphs)
    
     return
 
@@ -2060,10 +2554,78 @@ if __name__== "__main__":
     # config_subgraph_analysis_mouse_embryo, config_subgraph_analysis_mouse_hippocampus, config_subgraph_analysis_tonsil, config_subgraph_analysis_mouse_embryo_uni
     # config = ConfigLoader('config_subgraph_analysis_tonsil.py')
     # config_analysis
-    config = ConfigLoader('config_subgraph_analysis.py')
-    # config.vizualisation_args.save_to_image_format = "pdf" 
-    categories = ["positions"] # analyse or positions
-    plot_what = ["edges_beads_est"]
+    config_emb = ConfigLoader('config_subgraph_analysis_mouse_embryo.py')
+    config_hip = ConfigLoader('config_subgraph_analysis_mouse_hippocampus.py')
+    config_ton = ConfigLoader('config_subgraph_analysis_tonsil.py')
+
+    configs = [config_ton, config_emb, config_hip]
+
+    config = ConfigLoader('config_subgraph_analysis_tonsil.py')
+    # config = ConfigLoader('config_subgraph_analysis_embryo_uni.py')
+    # config_2 = ConfigLoader('config_subgraph_analysis_tonsil.py')
+    # config_2.base_network_args.unfiltered_edge_file = "only_spatial_cells.csv"
+    # config_2.base_network_args.run_parameters.nUMI_sum_per_bead_thresholds = [2, 10000]
+    # config_2.base_network_args.run_parameters.n_connected_cells_thresholds = [2, 10000]
+    # config = [config_2, config]
+
+
+    # config = ConfigLoader('config_standard_processes_modified.py')  
+    # edgelists = [
+    #     "modified_edges_100_0.csv",
+    #     "modified_edges_100_1.csv",
+    #     "modified_edges_100_2.csv",
+    #     "modified_edges_100_3.csv",
+    #     "modified_edges_100_4.csv",
+    #     "modified_edges_100_mouse_hippocampus_0.csv",
+    #     "modified_edges_100_mouse_hippocampus_1.csv",
+    #     "modified_edges_100_mouse_hippocampus_2.csv",
+    #     "modified_edges_100_mouse_hippocampus_3.csv",
+    #     "modified_edges_100_mouse_hippocampus_4.csv",
+
+    #     "modified_beads_100_0.csv",
+    #     "modified_beads_100_1.csv",
+    #     "modified_beads_100_2.csv",
+    #     "modified_beads_100_3.csv",
+    #     "modified_beads_100_4.csv",
+    #     "modified_beads_100_mouse_hippocampus_0.csv",
+    #     "modified_beads_100_mouse_hippocampus_1.csv",
+    #     "modified_beads_100_mouse_hippocampus_2.csv",
+    #     "modified_beads_100_mouse_hippocampus_3.csv",
+    #     "modified_beads_100_mouse_hippocampus_4.csv",
+
+
+
+    #     "modified_nUMI_100_0.csv",
+    #     "modified_nUMI_100_1.csv",
+    #     "modified_nUMI_100_2.csv",
+    #     "modified_nUMI_100_3.csv",
+    #     "modified_nUMI_100_4.csv",
+    #     "modified_nUMI_100_mouse_hippocampus_0.csv",
+    #     "modified_nUMI_100_mouse_hippocampus_1.csv",
+    #     "modified_nUMI_100_mouse_hippocampus_2.csv",
+    #     "modified_nUMI_100_mouse_hippocampus_3.csv",
+    #     "modified_nUMI_100_mouse_hippocampus_4.csv",
+
+    #     "modified_cells_5000_None_0.csv",
+    #     "modified_cells_5000_None_1.csv",
+    #     "modified_cells_5000_None_2.csv",
+    #     "modified_cells_5000_None_3.csv",
+    #     "modified_cells_5000_None_4.csv",
+    #     "modified_cells_100_mouse_hippocampus_0.csv",
+    #     "modified_cells_100_mouse_hippocampus_1.csv",
+    #     "modified_cells_100_mouse_hippocampus_2.csv",
+    #     "modified_cells_100_mouse_hippocampus_3.csv",
+    #     "modified_cells_100_mouse_hippocampus_4.csv",
+
+    # ]
+    # for edgelist in edgelists:
+    #     config_2 = config.copy()
+    #     config_2.base_network_args.unfiltered_edge_file = edgelist
+    #     configs.append(config_2.copy())
+    # config = configs
+    config = config_hip
+    categories = ["analyse"] # analyse or positions
+    plot_what = ["cpd"]
     # standard set of runs
     # categories = ["analyse"]
     # plot_what = ["dbscan_calculation", "dbscan_analysis"]
